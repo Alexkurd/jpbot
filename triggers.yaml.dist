@@ -1,0 +1,16 @@
+triggers:
+- name: еда
+  condition:
+    - word: еда
+  actiontext: ""
+- name: вывоз
+  showpreview: true
+  condition:
+    - word: вывоз
+    - word: памятка
+  actiontext: вывоз
+- name: Роутеры
+  showpreview: true
+  condition:
+    - word: роутеры
+  actiontext: ""

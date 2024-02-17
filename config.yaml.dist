@@ -1,0 +1,11 @@
+bot_token: ""
+connection: "updates" # webhook or Updates
+welcome_message: ""
+welcome_button_message: "Я - человек, а не злобный бот"
+forbiddenText: 
+- "пишите в личку"
+- "r:циф[рp][oо]в.+в[аa]лют[.\\\\s]?"
+ranks:
+  0: "Начинающий турист"
+100: "Зародыш туриста"
+rankMessage: "{name} получает уровень {newlvl} и звание: {newrank}"
