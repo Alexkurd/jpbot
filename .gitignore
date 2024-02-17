@@ -19,3 +19,8 @@
 
 # Go workspace file
 go.work
+config.yaml
+*.key
+*.pem
+*.json
+triggers.yaml
