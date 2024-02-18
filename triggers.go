@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	tgbotapi "github.com/Alexkurd/telegram-bot-api/v7"
 	"gopkg.in/yaml.v3"
 )
 
@@ -42,7 +42,7 @@ func CheckTriggerMessage(message *tgbotapi.Message) {
 	triggered := false
 	for _, trigger := range oldconfig.Trigger {
 		for _, condition := range trigger.Conditions {
-			if strings.ToLower(message.Text) == strings.ToLower(condition.Value) {
+			if strings.EqualFold(message.Text, condition.Value) {
 				triggered = true
 				continue
 			}
@@ -50,9 +50,9 @@ func CheckTriggerMessage(message *tgbotapi.Message) {
 		if triggered {
 			trigger.Actions = strings.Replace(trigger.Actions, "{reply_to_namelink}", getNameLink(*message.From), -1)
 			msg := tgbotapi.NewMessage(message.Chat.ID, trigger.Actions)
-			msg.ReplyToMessageID = message.MessageID
+			msg.ReplyParameters.MessageID = message.MessageID
 			if !trigger.ShowPreview {
-				msg.DisableWebPagePreview = true
+				msg.LinkPreviewOptions.IsDisabled = true
 			}
 			msg.ParseMode = "HTML"
 			if emulate {

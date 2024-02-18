@@ -10,13 +10,14 @@ import (
 	"strings"
 	"time"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	tgbotapi "github.com/Alexkurd/telegram-bot-api/v7"
 	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
 	Token                string            `yaml:"bot_token"`
 	Connection           string            `yaml:"connection"`
+	HostPort             string            `yaml:"hostport"`
 	ForbiddenText        []string          `yaml:"forbiddenText"`
 	Ranks                map[string]string `yaml:"ranks"`
 	WelcomeMessage       string            `yaml:"welcome_message"`
@@ -82,7 +83,7 @@ func main() {
 
 		//Webhook way
 	} else {
-		wh, err := tgbotapi.NewWebhookWithCert("https://95.217.5.60:8443/"+bot.Token, tgbotapi.FilePath("jpbot.pem"))
+		wh, err := tgbotapi.NewWebhookWithCert("https://"+MainConfig.HostPort+"/"+bot.Token, tgbotapi.FilePath("jpbot.pem"))
 
 		if err != nil {
 			panic(err)
@@ -105,14 +106,8 @@ func main() {
 		}
 		updates := bot.ListenForWebhook("/" + bot.Token)
 
-		go http.ListenAndServeTLS("95.217.5.60:8443", "jpbot.pem", "jpbot.key", nil)
+		go http.ListenAndServeTLS(MainConfig.HostPort, "jpbot.pem", "jpbot.key", nil)
 
-		// for update := range updates {
-		// 	log.Printf("%+v\n", update)
-		// }
-
-		// updates := bot.ListenForWebhook("/" + bot.Token)
-		// http.ListenAndServeTLS("95.217.5.60:88", "jpbot.pem", "jpbot.key", nil)
 		processUpdates(updates)
 	}
 
@@ -133,7 +128,6 @@ func processUpdates(updates tgbotapi.UpdatesChannel) {
 		}
 		//If chat hides userlist
 		if update.ChatMember != nil {
-			log.Print("UpdateId: ", update.UpdateID)
 			log.Print("New ChatMember joined " + update.ChatMember.NewChatMember.User.UserName)
 			if isNewMember(update.ChatMember.NewChatMember.User.ID) {
 				welcomeNewUser(update, *update.ChatMember.NewChatMember.User)
@@ -174,6 +168,30 @@ func processUpdates(updates tgbotapi.UpdatesChannel) {
 		if update.Message.ReplyToMessage != nil {
 			CheckTriggerMessage(update.Message)
 		}
+
+		//Fix rights for the newcomers
+		fixRights(update)
+	}
+}
+
+func fixRights(update tgbotapi.Update) {
+	config := tgbotapi.GetChatMemberConfig{
+		ChatConfigWithUser: tgbotapi.ChatConfigWithUser{
+			ChatConfig: tgbotapi.ChatConfig{
+				ChatID: update.Message.Chat.ID,
+			},
+			UserID: update.Message.From.ID,
+		},
+	}
+
+	member, err := bot.GetChatMember(config)
+	if err != nil {
+		log.Print(err)
+	}
+
+	if member.CanSendMessages && !member.CanSendPhotos {
+		log.Print("Fix rights for user " + update.Message.From.UserName)
+		upgradeUserRights(update.Message.Chat.ID, update.Message.From.ID)
 	}
 }
 
@@ -185,15 +203,19 @@ func getNameLink(user tgbotapi.User) string {
 		name = user.FirstName
 	}
 	if user.LastName != "" {
-		name = name + "" + user.LastName
+		name = name + " " + user.LastName
 	}
 	return "<a href=\"tg://user?id=" + userid + "\">" + name + "</a>"
 }
 
 func deleteMessage(chatID int64, messageId int) {
 	deleteConfig := tgbotapi.DeleteMessageConfig{
-		MessageID: messageId,
-		ChatID:    chatID,
+		BaseChatMessage: tgbotapi.BaseChatMessage{
+			ChatConfig: tgbotapi.ChatConfig{
+				ChatID: chatID,
+			},
+			MessageID: messageId,
+		},
 	}
 	bot.Send(deleteConfig)
 }
@@ -216,7 +238,7 @@ func isBadMessage(message string) bool {
 
 func processCommands(command string, message tgbotapi.Message) {
 	msg := tgbotapi.NewMessage(message.Chat.ID, "")
-	msg.ReplyToMessageID = message.MessageID
+	msg.ReplyParameters.MessageID = message.MessageID
 	switch command {
 	case "help":
 		msg.Text = "I understand /uptime and /status."

@@ -1,5 +1,6 @@
 bot_token: ""
 connection: "updates" # webhook or Updates
+hostport: "8.8.8.8:8443"
 welcome_message: ""
 welcome_button_message: "Я - человек, а не злобный бот"
 forbiddenText: 

@@ -7,10 +7,12 @@ package main
 */
 
 import (
+	"encoding/json"
 	"log"
+	"strconv"
 	"strings"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	tgbotapi "github.com/Alexkurd/telegram-bot-api/v7"
 )
 
 func welcomeNewUser(update tgbotapi.Update, user tgbotapi.User) {
@@ -26,13 +28,15 @@ func welcomeNewUser(update tgbotapi.Update, user tgbotapi.User) {
 	msg := tgbotapi.NewMessage(chatid, welcomeMessage)
 
 	//Add Inline callback
+	userid := strconv.Itoa(int(user.ID))
+	callbackData := "{\"command\": \"upgrade_rights\", \"data\": \"" + userid + "\"}"
+
 	var keyboard = tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData(MainConfig.WelcomeButtonMessage, "upgrade_rights"),
+			tgbotapi.NewInlineKeyboardButtonData(MainConfig.WelcomeButtonMessage, callbackData),
 		),
 	)
-
-	msg.DisableWebPagePreview = true
+	msg.LinkPreviewOptions.IsDisabled = true
 	msg.ParseMode = "HTML"
 	msg.ReplyMarkup = keyboard
 
@@ -44,9 +48,9 @@ func welcomeNewUser(update tgbotapi.Update, user tgbotapi.User) {
 }
 
 func setInitialRights(update tgbotapi.Update, user tgbotapi.User) {
+	log.Print("Setting rights for user: ", user.ID, user.UserName)
 	// Example: Set user rights to read-only initially
 	if emulate {
-		log.Print("Setting rights for user: ", user.ID, user.UserName)
 		return
 	}
 
@@ -58,15 +62,14 @@ func setInitialRights(update tgbotapi.Update, user tgbotapi.User) {
 	}
 
 	initialRights := tgbotapi.ChatPermissions{
-		CanSendMessages:       false,
-		CanSendMediaMessages:  false,
-		CanSendOtherMessages:  false,
-		CanAddWebPagePreviews: false,
+		CanSendMessages: false,
 	}
 
 	config := tgbotapi.RestrictChatMemberConfig{
 		ChatMemberConfig: tgbotapi.ChatMemberConfig{
-			ChatID: chatid,
+			ChatConfig: tgbotapi.ChatConfig{
+				ChatID: chatid,
+			},
 			UserID: user.ID,
 		},
 		Permissions: &initialRights,
@@ -78,30 +81,49 @@ func setInitialRights(update tgbotapi.Update, user tgbotapi.User) {
 }
 
 func handleCallback(query *tgbotapi.CallbackQuery) {
-	switch query.Data {
+	type Command struct {
+		Command string `json:"command"`
+		Data    string `json:"data"`
+	}
+	var callback Command
+	err := json.Unmarshal([]byte(query.Data), &callback)
+	if err != nil {
+		log.Print(err)
+	}
+	switch callback.Command {
 	case "upgrade_rights":
-		upgradeUserRights(query)
+		if callback.Data != strconv.Itoa(int(query.From.ID)) {
+			log.Print("User " + query.From.UserName + ":" + strconv.Itoa(int(query.From.ID)) + " clicked wrong button")
+			break
+		}
+		upgradeUserRights(query.Message.Chat.ID, query.From.ID)
+		//member := tgbotapi.SetChatM{
+
 		answerCallbackQuery(query.ID, "Rights upgraded!")
 		deleteMessage(query.Message.Chat.ID, query.Message.MessageID)
 		// handle other callbacks here
 	}
 }
 
-func upgradeUserRights(query *tgbotapi.CallbackQuery) {
+func upgradeUserRights(chatID int64, userid int64) {
 	// Logic to upgrade user rights
 	// Example: giving the user the ability to send messages
 	defaultRights := tgbotapi.ChatPermissions{
 		CanSendMessages: true,
 	}
+	defaultRights.SetCanSendMediaMessages(true)
 
 	config := tgbotapi.RestrictChatMemberConfig{
 		ChatMemberConfig: tgbotapi.ChatMemberConfig{
-			ChatID: query.Message.Chat.ID,
-			UserID: query.From.ID,
+			ChatConfig: tgbotapi.ChatConfig{
+				ChatID: chatID,
+			},
+			UserID: userid,
 		},
-		Permissions: &defaultRights,
+		UseIndependentChatPermissions: true,
+		Permissions:                   &defaultRights,
 	}
-	bot.Request(config)
+	bot.Send(config)
 }
 
 func answerCallbackQuery(callbackQueryID string, text string) {
