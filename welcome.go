@@ -7,7 +7,6 @@ package main
 */
 
 import (
-	"encoding/json"
 	"log"
 	"strconv"
 	"strings"
@@ -77,31 +76,6 @@ func setInitialRights(update tgbotapi.Update, user tgbotapi.User) {
 	_, err := bot.Request(config)
 	if err != nil {
 		log.Print(err)
-	}
-}
-
-func handleCallback(query *tgbotapi.CallbackQuery) {
-	type Command struct {
-		Command string `json:"command"`
-		Data    string `json:"data"`
-	}
-	var callback Command
-	err := json.Unmarshal([]byte(query.Data), &callback)
-	if err != nil {
-		log.Print(err)
-	}
-	switch callback.Command {
-	case "upgrade_rights":
-		if callback.Data != strconv.Itoa(int(query.From.ID)) {
-			log.Print("User " + query.From.UserName + ":" + strconv.Itoa(int(query.From.ID)) + " clicked wrong button")
-			break
-		}
-		upgradeUserRights(query.Message.Chat.ID, query.From.ID)
-		//member := tgbotapi.SetChatM{
-
-		answerCallbackQuery(query.ID, "Rights upgraded!")
-		deleteMessage(query.Message.Chat.ID, query.Message.MessageID)
-		// handle other callbacks here
 	}
 }
 

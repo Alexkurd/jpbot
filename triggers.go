@@ -38,7 +38,7 @@ type oldCondition struct {
 
 var oldconfig combotTrigger
 
-func CheckTriggerMessage(message *tgbotapi.Message) {
+func CheckTriggerMessage(message *tgbotapi.Message) bool {
 	triggered := false
 	for _, trigger := range oldconfig.Trigger {
 		for _, condition := range trigger.Conditions {
@@ -68,6 +68,7 @@ func CheckTriggerMessage(message *tgbotapi.Message) {
 			log.Print("TriggeredGood:", message.Text)
 		}
 	}
+	return triggered
 }
 
 func readTriggers() {
@@ -75,10 +76,24 @@ func readTriggers() {
 	if err != nil {
 		log.Panic(err)
 	}
-	//var config Config
 	err = yaml.Unmarshal(configFile, &oldconfig)
 	if err != nil {
 		log.Panic(err)
 	}
 	log.Println("Triggers loaded: ", len(oldconfig.Trigger))
+}
+
+func getTriggersList() string {
+	message := ""
+	for _, trigger := range oldconfig.Trigger {
+
+		if len(trigger.Conditions) > 0 {
+			var words []string
+			for _, condition := range trigger.Conditions {
+				words = append(words, condition.Value)
+			}
+			message = message + trigger.Name + ": " + strings.Join(words, "|") + "\r\n"
+		}
+	}
+	return message
 }

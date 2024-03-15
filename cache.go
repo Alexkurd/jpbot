@@ -67,15 +67,11 @@ func saveCache() error {
 	return nil
 }
 
-func importData() (bool, error) {
+func importCache() (bool, error) {
 	err := loadCache()
 	if err != nil {
 		fmt.Println("Error loading data:", err)
 	}
-	// Replace with your actual data import logic
-	// Return true if imported successfully, false otherwise
-	// If successful, update data.LastChanged before returning
-	fmt.Println("Placeholder for data import logic")
 
 	fmt.Println("Last changed:", cache.LastChanged)
 	cache.LastChanged = time.Now().Unix()

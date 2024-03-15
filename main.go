@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -22,6 +23,7 @@ type Config struct {
 	Ranks                map[string]string `yaml:"ranks"`
 	WelcomeMessage       string            `yaml:"welcome_message"`
 	WelcomeButtonMessage string            `yaml:"welcome_button_message"`
+	DenyBots             []string          `yaml:"denybots"`
 }
 
 var emulate = false
@@ -29,88 +31,22 @@ var emulate = false
 var MainConfig Config
 var startTime time.Time
 var bot *tgbotapi.BotAPI
+var err error
 
-func readConfig() {
-	// Read and parse the config file
-	configFile, err := os.ReadFile("config.yaml")
-	if err != nil {
-		log.Panic(err)
-	}
-	//var config Config
-	err = yaml.Unmarshal(configFile, &MainConfig)
-	if err != nil {
-		log.Panic(err)
-	}
-	//Override with ENV
-	token := os.Getenv("BOT_TOKEN")
-	if token != "" {
-		MainConfig.Token = token
-	}
+func init() {
+	readConfig() //Fill config with values
+	readTriggers()
+	importCache()
+	startTime = time.Now()
+	go syncData()
 }
 
 func main() {
-	var err error
-
-	readConfig() //Fill config with values
-	readTriggers()
-	importData()
-	startTime = time.Now()
-	go syncData()
-	//Common part
-	bot, err = tgbotapi.NewBotAPI(MainConfig.Token) // Set up the Telegram bot
-	if err != nil {
-		log.Panic(err)
-	}
-	if isDebugMode() {
-		bot.Debug = true
-	}
-	log.Printf("Authorized on account %s", bot.Self.UserName)
-
-	if !isWebhook() {
-		deleteWh := tgbotapi.DeleteWebhookConfig{}
-		bot.Request(deleteWh)
-		//GetUpdatesWay
-		// Create a new Update config with a timeout
-		u := tgbotapi.NewUpdate(0)
-		u.Timeout = 10
-		updates := bot.GetUpdatesChan(u)
-
-		// TODO Ranking
-		// Initialize a map to track user message counts
-		//userMessageCounts := make(map[int]int)
-		processUpdates(updates)
-		//End GetUpdates
-
-		//Webhook way
-	} else {
-		wh, err := tgbotapi.NewWebhookWithCert("https://"+MainConfig.HostPort+"/"+bot.Token, tgbotapi.FilePath("jpbot.pem"))
-
-		if err != nil {
-			panic(err)
-		}
-
-		_, err = bot.Request(wh)
-
-		if err != nil {
-			panic(err)
-		}
-
-		info, err := bot.GetWebhookInfo()
-
-		if err != nil {
-			panic(err)
-		}
-
-		if info.LastErrorDate != 0 {
-			log.Printf("failed to set webhook: %s", info.LastErrorMessage)
-		}
-		updates := bot.ListenForWebhook("/" + bot.Token)
-
-		go http.ListenAndServeTLS(MainConfig.HostPort, "jpbot.pem", "jpbot.key", nil)
-
-		processUpdates(updates)
-	}
-
+	var updates tgbotapi.UpdatesChannel
+	botInit()
+	afterBotInit()
+	updates = startBot()
+	processUpdates(updates)
 } //End main()
 
 func processUpdates(updates tgbotapi.UpdatesChannel) {
@@ -119,7 +55,7 @@ func processUpdates(updates tgbotapi.UpdatesChannel) {
 		if update.CallbackQuery != nil {
 			handleCallback(update.CallbackQuery)
 		}
-		//Custom_emoji
+		//Custom_emoji TODO
 		//update.Message.CaptionEntities[].Type == "custom_emoji"
 
 		//Private chat
@@ -155,6 +91,10 @@ func processUpdates(updates tgbotapi.UpdatesChannel) {
 			}
 		}
 
+		if isDenyBot(update.Message) {
+			deleteMessage(update.Message.Chat.ID, update.Message.MessageID)
+		}
+
 		// Check for forbidden text
 		if isBadMessage(update.Message.Text) {
 			if emulate {
@@ -165,12 +105,59 @@ func processUpdates(updates tgbotapi.UpdatesChannel) {
 			continue
 		}
 
-		if update.Message.ReplyToMessage != nil {
-			CheckTriggerMessage(update.Message)
-		}
+		//if update.Message.ReplyToMessage != nil {
+		CheckTriggerMessage(update.Message)
+		//}
 
 		//Fix rights for the newcomers
 		fixRights(update)
+	}
+}
+
+func isDenyBot(message *tgbotapi.Message) bool {
+	badbot := false
+	for _, bot := range MainConfig.DenyBots {
+		if strings.ToLower(message.ViaBot.UserName) == bot {
+			badbot = true
+			break
+		}
+	}
+	return badbot
+}
+
+func handleCallback(query *tgbotapi.CallbackQuery) {
+	type Command struct {
+		Command string `json:"command"`
+		Data    string `json:"data"`
+	}
+	var callback Command
+	err := json.Unmarshal([]byte(query.Data), &callback)
+	if err != nil {
+		log.Print(err)
+	}
+	switch callback.Command {
+	case "upgrade_rights":
+		if callback.Data != strconv.Itoa(int(query.From.ID)) {
+			log.Print("User " + query.From.UserName + ":" + strconv.Itoa(int(query.From.ID)) + " clicked wrong button")
+			break
+		}
+		log.Print("User " + query.From.UserName + ":" + strconv.Itoa(int(query.From.ID)) + " clicked his button")
+		upgradeUserRights(query.Message.Chat.ID, query.From.ID)
+		answerCallbackQuery(query.ID, "Rights upgraded!")
+		deleteMessage(query.Message.Chat.ID, query.Message.MessageID)
+	// handle other callbacks here
+	case "show_menu":
+		deleteMessage(query.Message.Chat.ID, query.Message.MessageID)
+		msg := tgbotapi.NewMessage(query.Message.Chat.ID, "ᓚᘏᗢ"+strings.Repeat(" ", 80)+"\\^o^/")
+		msg.ParseMode = "HTML"
+		msg.ReplyMarkup = replyWithMenu(callback.Data)
+		bot.Send(msg)
+	case "show_root_menu":
+		deleteMessage(query.Message.Chat.ID, query.Message.MessageID)
+		msg := tgbotapi.NewMessage(query.Message.Chat.ID, "Посмотрите готовые статьи")
+		msg.ParseMode = "HTML"
+		msg.ReplyMarkup = rootMenu()
+		bot.Send(msg)
 	}
 }
 
@@ -237,15 +224,28 @@ func isBadMessage(message string) bool {
 }
 
 func processCommands(command string, message tgbotapi.Message) {
+	//Only Private mmessages
+	if message.From.ID != message.Chat.ID {
+		deleteMessage(message.Chat.ID, message.MessageID)
+		return
+	}
 	msg := tgbotapi.NewMessage(message.Chat.ID, "")
-	msg.ReplyParameters.MessageID = message.MessageID
 	switch command {
 	case "help":
 		msg.Text = "I understand /uptime and /status."
+		msg.ReplyParameters.MessageID = message.MessageID
 	case "uptime":
 		msg.Text = "Uptime: " + uptime()
-	case "status":
-		msg.Text = "I'm ok."
+		msg.ReplyParameters.MessageID = message.MessageID
+	case "start":
+		msg.Text = "Посмотрите готовые статьи"
+		msg.ReplyMarkup = rootMenu()
+		deleteMessage(message.Chat.ID, message.MessageID)
+	case "reload":
+		reload()
+		msg.Text = "Reloaded"
+	case "triggers":
+		msg.Text = getTriggersList()
 	default:
 		msg.Text = ""
 	}
@@ -278,4 +278,94 @@ func isNewMember(userid int64) bool {
 		return true
 	}
 	return false
+}
+
+func reload() {
+	readTriggers()
+	readMenu()
+}
+
+func readConfig() {
+	// Read and parse the config file
+	configFile, err := os.ReadFile("config.yaml")
+	if err != nil {
+		log.Panic(err)
+	}
+
+	err = yaml.Unmarshal(configFile, &MainConfig)
+	if err != nil {
+		log.Panic(err)
+	}
+	//Override with ENV
+	token := os.Getenv("BOT_TOKEN")
+	if token != "" {
+		MainConfig.Token = token
+	}
+	hostport := os.Getenv("WEBHOOK_HOSTPORT")
+	if token != "" {
+		MainConfig.HostPort = hostport
+	}
+}
+
+func botInit() {
+	//Common part
+	bot, err = tgbotapi.NewBotAPI(MainConfig.Token) // Set up the Telegram bot
+	if err != nil {
+		log.Panic(err)
+	}
+	if isDebugMode() {
+		bot.Debug = true
+	}
+
+	log.Printf("Authorized on account %s", bot.Self.UserName)
+}
+
+func afterBotInit() {
+	startMenu()
+}
+
+func startBot() tgbotapi.UpdatesChannel {
+	var updates tgbotapi.UpdatesChannel
+
+	if !isWebhook() {
+		deleteWh := tgbotapi.DeleteWebhookConfig{}
+		bot.Request(deleteWh)
+		//GetUpdatesWay
+		// Create a new Update config with a timeout
+		u := tgbotapi.NewUpdate(0)
+		u.Timeout = 10
+		updates = bot.GetUpdatesChan(u)
+
+		// TODO Ranking
+		// Initialize a map to track user message counts
+		//userMessageCounts := make(map[int]int)
+		//End GetUpdates
+
+		//Webhook way
+	} else {
+		wh, err := tgbotapi.NewWebhookWithCert("https://"+MainConfig.HostPort+"/"+bot.Token, tgbotapi.FilePath("jpbot.pem"))
+		if err != nil {
+			panic(err)
+		}
+
+		_, err = bot.Request(wh)
+		if err != nil {
+			panic(err)
+		}
+
+		info, err := bot.GetWebhookInfo()
+		if err != nil {
+			panic(err)
+		}
+
+		if info.LastErrorDate != 0 {
+			log.Printf("failed to set webhook: %s", info.LastErrorMessage)
+		}
+
+		updates = bot.ListenForWebhook("/" + bot.Token)
+
+		go http.ListenAndServeTLS(MainConfig.HostPort, "jpbot.pem", "jpbot.key", nil)
+	}
+
+	return updates
 }
