@@ -105,6 +105,12 @@ func processUpdates(updates tgbotapi.UpdatesChannel) {
 			continue
 		}
 
+		if isChannelMessage(update) {
+			log.Print("Delete message from channel - ", update.Message.SenderChat.UserName)
+			deleteMessage(update.Message.Chat.ID, update.Message.MessageID)
+			continue
+		}
+
 		//if update.Message.ReplyToMessage != nil {
 		CheckTriggerMessage(update.Message)
 		//}
@@ -114,12 +120,18 @@ func processUpdates(updates tgbotapi.UpdatesChannel) {
 	}
 }
 
+func isChannelMessage(update tgbotapi.Update) bool {
+	return update.Message.SenderChat != nil
+}
+
 func isDenyBot(message *tgbotapi.Message) bool {
 	badbot := false
-	for _, bot := range MainConfig.DenyBots {
-		if strings.ToLower(message.ViaBot.UserName) == bot {
-			badbot = true
-			break
+	if message.ViaBot != nil {
+		for _, bot := range MainConfig.DenyBots {
+			if strings.ToLower(message.ViaBot.UserName) == bot {
+				badbot = true
+				break
+			}
 		}
 	}
 	return badbot
@@ -192,6 +204,9 @@ func getNameLink(user tgbotapi.User) string {
 	if user.LastName != "" {
 		name = name + " " + user.LastName
 	}
+	if user.UserName != "" {
+		name = name + "(" + user.UserName + ")"
+	}
 	return "<a href=\"tg://user?id=" + userid + "\">" + name + "</a>"
 }
 
@@ -212,10 +227,12 @@ func isBadMessage(message string) bool {
 		if word[0] == 'r' {
 			regex := regexp.MustCompile(word[2:])
 			if regex.MatchString(message) {
+				log.Print("TriggeredBad: ", word[2:])
 				return true
 			}
 		} else {
 			if strings.Contains(message, word) {
+				log.Print("TriggeredBad: ", word)
 				return true
 			}
 		}
@@ -246,12 +263,19 @@ func processCommands(command string, message tgbotapi.Message) {
 		msg.Text = "Reloaded"
 	case "triggers":
 		msg.Text = getTriggersList()
+	case "say":
+		say()
 	default:
 		msg.Text = ""
 	}
 	if msg.Text != "" {
 		bot.Send(msg)
 	}
+}
+
+func say() {
+	//chat :=tgbotapi.
+
 }
 
 func uptime() string {
