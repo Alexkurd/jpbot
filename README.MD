@@ -3,7 +3,8 @@
 ### Features
 - Welcome message + human button
 - Chat permissions for guests/members
-- Triggers for message replies with heplful links
+- Triggers with heplful links
+- Menu for private chat with bot
 - Ranking(in progress)
 
 ### Quickstart
