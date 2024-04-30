@@ -1,0 +1,12 @@
+- Title: "Title1"
+  Command: title1
+  Submenu:
+    - Title: title11
+      Url: https://title11.site.com
+    - Title: title12
+      Url: https://title12.site.com
+    - Title: title13
+      Url: https://title13.site.com
+- Title: "Title2"
+  Command: title2
+  Url: https://title2.site.com

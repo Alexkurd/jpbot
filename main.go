@@ -65,7 +65,7 @@ func processUpdates(updates tgbotapi.UpdatesChannel) {
 		//If chat hides userlist
 		if update.ChatMember != nil {
 			log.Print("New ChatMember joined " + update.ChatMember.NewChatMember.User.UserName)
-			if isNewMember(update.ChatMember.NewChatMember.User.ID) {
+			if isNewMember(update.ChatMember) {
 				welcomeNewUser(update, *update.ChatMember.NewChatMember.User)
 				setInitialRights(update, *update.ChatMember.NewChatMember.User)
 			}
@@ -84,11 +84,18 @@ func processUpdates(updates tgbotapi.UpdatesChannel) {
 		if update.Message.NewChatMembers != nil {
 			for _, newMember := range update.Message.NewChatMembers {
 				log.Print("New user joined " + newMember.UserName)
-				if isNewMember(newMember.ID) {
+				if isCachedUser(newMember.ID) {
 					welcomeNewUser(update, newMember)
 					setInitialRights(update, newMember)
 				}
 			}
+		}
+
+		//Handle member left
+		if update.Message.LeftChatMember != nil {
+			log.Print("Member left: " + update.Message.LeftChatMember.UserName)
+			log.Print("Update.Message" + update.Message.Text)
+			log.Print(fmt.Printf("%+v\n", update.Message))
 		}
 
 		if isDenyBot(update.Message) {
@@ -290,7 +297,7 @@ func isDebugMode() bool {
 	return strings.ToLower(os.Getenv("BOT_DEBUG")) == "true"
 }
 
-func isNewMember(userid int64) bool {
+func isCachedUser(userid int64) bool {
 	newMember := getMember(userid)
 	if newMember == nil {
 		cache.Member = append(cache.Member, ChatMember{
@@ -302,6 +309,18 @@ func isNewMember(userid int64) bool {
 		return true
 	}
 	return false
+}
+
+func isNewMember(Member *tgbotapi.ChatMemberUpdated) bool {
+	if Member.OldChatMember.IsMember && !Member.NewChatMember.IsMember {
+		log.Print("IsMember state changed")
+		log.Print(Member.OldChatMember.IsMember)
+		log.Print(Member.NewChatMember.IsMember)
+		log.Print("--")
+		return false
+	}
+
+	return isCachedUser(Member.NewChatMember.User.ID)
 }
 
 func reload() {
