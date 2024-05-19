@@ -64,7 +64,7 @@ func processUpdates(updates tgbotapi.UpdatesChannel) {
 		}
 		//If chat hides userlist
 		if update.ChatMember != nil {
-			log.Print("New ChatMember joined " + update.ChatMember.NewChatMember.User.UserName)
+			//log.Print("New ChatMember joined ", update.MyChatMember.NewChatMember.User.ID, ":", update.ChatMember.NewChatMember.User.UserName)
 			if isNewMember(update.ChatMember) {
 				welcomeNewUser(update, *update.ChatMember.NewChatMember.User)
 				setInitialRights(update, *update.ChatMember.NewChatMember.User)
@@ -83,7 +83,7 @@ func processUpdates(updates tgbotapi.UpdatesChannel) {
 		// Handle new members joining
 		if update.Message.NewChatMembers != nil {
 			for _, newMember := range update.Message.NewChatMembers {
-				log.Print("New user joined " + newMember.UserName)
+				//log.Print("New user joined " + newMember.UserName, ":", newMember.ID)
 				if isCachedUser(newMember.ID) {
 					welcomeNewUser(update, newMember)
 					setInitialRights(update, newMember)
@@ -161,6 +161,11 @@ func handleCallback(query *tgbotapi.CallbackQuery) {
 			break
 		}
 		log.Print("User " + query.From.UserName + ":" + strconv.Itoa(int(query.From.ID)) + " clicked his button")
+		if isUserCasBanned(int(query.From.ID)) {
+			//First step: only log
+			log.Print("User " + query.From.UserName + ":" + strconv.Itoa(int(query.From.ID)) + " is CasBanned")
+			//answerCallbackQuery(query.ID, "Sorry, Casban")
+		}
 		upgradeUserRights(query.Message.Chat.ID, query.From.ID)
 		answerCallbackQuery(query.ID, "Rights upgraded!")
 		deleteMessage(query.Message.Chat.ID, query.Message.MessageID)
@@ -313,10 +318,7 @@ func isCachedUser(userid int64) bool {
 
 func isNewMember(Member *tgbotapi.ChatMemberUpdated) bool {
 	if Member.OldChatMember.IsMember && !Member.NewChatMember.IsMember {
-		log.Print("IsMember state changed")
-		log.Print(Member.OldChatMember.IsMember)
-		log.Print(Member.NewChatMember.IsMember)
-		log.Print("--")
+		log.Print("IsMember state changed ", Member.OldChatMember.IsMember, "->", Member.NewChatMember.IsMember)
 		return false
 	}
 
