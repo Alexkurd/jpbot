@@ -55,8 +55,6 @@ func processUpdates(updates tgbotapi.UpdatesChannel) {
 		if update.CallbackQuery != nil {
 			handleCallback(update.CallbackQuery)
 		}
-		//Custom_emoji TODO
-		//update.Message.CaptionEntities[].Type == "custom_emoji"
 
 		//Private chat
 		if update.MyChatMember != nil {
@@ -112,8 +110,14 @@ func processUpdates(updates tgbotapi.UpdatesChannel) {
 			continue
 		}
 
+		if isMessageStartsWithEmoji(update) {
+			log.Print("Deleted message with emoji - ", update.Message.From.UserName)
+			deleteMessage(update.Message.Chat.ID, update.Message.MessageID)
+
+		}
+
 		if isChannelMessage(update) {
-			log.Print("Delete message from channel - ", update.Message.SenderChat.UserName)
+			log.Print("Deleted message from channel - ", update.Message.SenderChat.UserName)
 			deleteMessage(update.Message.Chat.ID, update.Message.MessageID)
 			continue
 		}
@@ -253,7 +257,7 @@ func isBadMessage(message string) bool {
 }
 
 func processCommands(command string, message tgbotapi.Message) {
-	//Only Private mmessages
+	//Only Private messages
 	if message.From.ID != message.Chat.ID {
 		deleteMessage(message.Chat.ID, message.MessageID)
 		return
@@ -323,6 +327,16 @@ func isNewMember(Member *tgbotapi.ChatMemberUpdated) bool {
 	}
 
 	return isCachedUser(Member.NewChatMember.User.ID)
+}
+
+func isMessageStartsWithEmoji(update tgbotapi.Update) bool {
+	if update.Message.Entities == nil {
+		return false
+	}
+	if update.Message.Entities[0].Type == "custom_emoji" && update.Message.Entities[0].Offset == 0 {
+		return true
+	}
+	return false
 }
 
 func reload() {
