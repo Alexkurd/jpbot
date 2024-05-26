@@ -333,7 +333,6 @@ func isMessageStartsWithEmoji(update tgbotapi.Update) bool {
 	if update.Message.Entities == nil {
 		return false
 	}
-	println(len(update.Message.Text))
 	if update.Message.Entities[0].Type == "custom_emoji" && update.Message.Entities[0].Offset == 0 && len(update.Message.Text) > 4 {
 		return true
 	}
