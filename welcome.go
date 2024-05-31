@@ -10,9 +10,17 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"time"
 
 	tgbotapi "github.com/Alexkurd/telegram-bot-api/v7"
 )
+
+type WelcomeMessage struct {
+	ID        int
+	UserID    int64
+	ChatID    int64
+	Timestamp time.Time
+}
 
 func welcomeNewUser(update tgbotapi.Update, user tgbotapi.User) {
 	var chatid int64
@@ -42,13 +50,15 @@ func welcomeNewUser(update tgbotapi.Update, user tgbotapi.User) {
 	if emulate {
 		log.Println("Welcome for " + user.UserName)
 	} else {
-		bot.Send(msg)
+		messageSent, _ := bot.Send(msg)
+		welcomeSent(messageSent, user.ID)
+		saveCache()
 	}
 }
 
 func setInitialRights(update tgbotapi.Update, user tgbotapi.User) {
-	log.Print("Setting rights for user: ", user.ID, user.UserName)
-	// Example: Set user rights to read-only initially
+	log.Print("Setting rights for user: ", user.ID, " ", user.UserName)
+	//Set user rights to read-only initially
 	if emulate {
 		return
 	}
@@ -81,7 +91,7 @@ func setInitialRights(update tgbotapi.Update, user tgbotapi.User) {
 
 func upgradeUserRights(chatID int64, userid int64) {
 	// Logic to upgrade user rights
-	// Example: giving the user the ability to send messages
+	// Giving the user the ability to send messages
 	defaultRights := tgbotapi.ChatPermissions{
 		CanSendMessages: true,
 	}
@@ -98,9 +108,38 @@ func upgradeUserRights(chatID int64, userid int64) {
 		Permissions:                   &defaultRights,
 	}
 	bot.Send(config)
+	clearCachedUser(userid)
+	clearDeleteListByUser(userid)
 }
 
 func answerCallbackQuery(callbackQueryID string, text string) {
 	callbackConfig := tgbotapi.NewCallback(callbackQueryID, text)
 	bot.Send(callbackConfig)
+}
+
+func welcomeSent(message tgbotapi.Message, userID int64) {
+	// Add message with timestamp + 24 hours
+	cache.DeleteList = append(cache.DeleteList, WelcomeMessage{
+		ID:        message.MessageID,
+		UserID:    userID,
+		ChatID:    message.Chat.ID,
+		Timestamp: time.Now().UTC().Add(time.Hour * 24),
+	})
+}
+
+func CleanUpWelcome() {
+	// Remove entries older than now
+	now := time.Now().UTC()
+	if len(cache.DeleteList) > 0 {
+		for id, message := range cache.DeleteList {
+			if message.Timestamp.Before(now) {
+				deleteMessage(message.ChatID, message.ID)
+				kickChatMember(message.ChatID, message.UserID)
+				clearCachedUser(message.UserID)
+				clearDeleteListByUser(message.UserID)
+				cache.DeleteList = append(cache.DeleteList[:id], cache.DeleteList[id+1:]...)
+			}
+		}
+		saveCache()
+	}
 }

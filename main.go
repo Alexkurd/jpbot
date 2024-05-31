@@ -6,7 +6,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -62,7 +61,6 @@ func processUpdates(updates tgbotapi.UpdatesChannel) {
 		}
 		//If chat hides userlist
 		if update.ChatMember != nil {
-			//log.Print("New ChatMember joined ", update.MyChatMember.NewChatMember.User.ID, ":", update.ChatMember.NewChatMember.User.UserName)
 			if isNewMember(update.ChatMember) {
 				welcomeNewUser(update, *update.ChatMember.NewChatMember.User)
 				setInitialRights(update, *update.ChatMember.NewChatMember.User)
@@ -81,7 +79,6 @@ func processUpdates(updates tgbotapi.UpdatesChannel) {
 		// Handle new members joining
 		if update.Message.NewChatMembers != nil {
 			for _, newMember := range update.Message.NewChatMembers {
-				//log.Print("New user joined " + newMember.UserName, ":", newMember.ID)
 				if isCachedUser(newMember.ID) {
 					welcomeNewUser(update, newMember)
 					setInitialRights(update, newMember)
@@ -93,7 +90,7 @@ func processUpdates(updates tgbotapi.UpdatesChannel) {
 		if update.Message.LeftChatMember != nil {
 			log.Print("Member left: " + update.Message.LeftChatMember.UserName)
 			log.Print("Update.Message" + update.Message.Text)
-			log.Print(fmt.Printf("%+v\n", update.Message))
+			//log.Print(fmt.Printf("%+v\n", update.Message))
 		}
 
 		if isDenyBot(update.Message) {
@@ -107,13 +104,13 @@ func processUpdates(updates tgbotapi.UpdatesChannel) {
 				continue
 			}
 			deleteMessage(update.Message.Chat.ID, update.Message.MessageID)
+			CleanUpWelcome()
 			continue
 		}
 
 		if isMessageStartsWithEmoji(update) {
 			log.Print("Deleted message with emoji - ", update.Message.From.UserName)
 			deleteMessage(update.Message.Chat.ID, update.Message.MessageID)
-
 		}
 
 		if isChannelMessage(update) {
@@ -122,30 +119,11 @@ func processUpdates(updates tgbotapi.UpdatesChannel) {
 			continue
 		}
 
-		//if update.Message.ReplyToMessage != nil {
 		CheckTriggerMessage(update.Message)
-		//}
 
 		//Fix rights for the newcomers
 		fixRights(update)
 	}
-}
-
-func isChannelMessage(update tgbotapi.Update) bool {
-	return update.Message.SenderChat != nil
-}
-
-func isDenyBot(message *tgbotapi.Message) bool {
-	badbot := false
-	if message.ViaBot != nil {
-		for _, bot := range MainConfig.DenyBots {
-			if strings.ToLower(message.ViaBot.UserName) == bot {
-				badbot = true
-				break
-			}
-		}
-	}
-	return badbot
 }
 
 func handleCallback(query *tgbotapi.CallbackQuery) {
@@ -170,9 +148,9 @@ func handleCallback(query *tgbotapi.CallbackQuery) {
 			log.Print("User " + query.From.UserName + ":" + strconv.Itoa(int(query.From.ID)) + " is CasBanned")
 			//answerCallbackQuery(query.ID, "Sorry, Casban")
 		}
+		deleteMessage(query.Message.Chat.ID, query.Message.MessageID)
 		upgradeUserRights(query.Message.Chat.ID, query.From.ID)
 		answerCallbackQuery(query.ID, "Rights upgraded!")
-		deleteMessage(query.Message.Chat.ID, query.Message.MessageID)
 	// handle other callbacks here
 	case "show_menu":
 		deleteMessage(query.Message.Chat.ID, query.Message.MessageID)
@@ -210,52 +188,6 @@ func fixRights(update tgbotapi.Update) {
 	}
 }
 
-func getNameLink(user tgbotapi.User) string {
-	log.Print(user)
-	userid := strconv.Itoa(int(user.ID))
-	name := ""
-	if user.FirstName != "" {
-		name = user.FirstName
-	}
-	if user.LastName != "" {
-		name = name + " " + user.LastName
-	}
-	if user.UserName != "" {
-		name = name + "(" + user.UserName + ")"
-	}
-	return "<a href=\"tg://user?id=" + userid + "\">" + name + "</a>"
-}
-
-func deleteMessage(chatID int64, messageId int) {
-	deleteConfig := tgbotapi.DeleteMessageConfig{
-		BaseChatMessage: tgbotapi.BaseChatMessage{
-			ChatConfig: tgbotapi.ChatConfig{
-				ChatID: chatID,
-			},
-			MessageID: messageId,
-		},
-	}
-	bot.Send(deleteConfig)
-}
-
-func isBadMessage(message string) bool {
-	for _, word := range MainConfig.ForbiddenText {
-		if word[0] == 'r' {
-			regex := regexp.MustCompile(word[2:])
-			if regex.MatchString(message) {
-				log.Print("TriggeredBad: ", word[2:])
-				return true
-			}
-		} else {
-			if strings.Contains(message, word) {
-				log.Print("TriggeredBad: ", word)
-				return true
-			}
-		}
-	}
-	return false
-}
-
 func processCommands(command string, message tgbotapi.Message) {
 	//Only Private messages
 	if message.From.ID != message.Chat.ID {
@@ -281,6 +213,8 @@ func processCommands(command string, message tgbotapi.Message) {
 		msg.Text = getTriggersList()
 	case "say":
 		say()
+	case "deletequeue":
+		msg.Text = ToDeleteQueue()
 	default:
 		msg.Text = ""
 	}
@@ -291,52 +225,14 @@ func processCommands(command string, message tgbotapi.Message) {
 
 func say() {
 	//chat :=tgbotapi.
+}
 
+func ToDeleteQueue() string {
+	return fmt.Sprintln(cache.DeleteList)
 }
 
 func uptime() string {
 	return fmt.Sprintln(time.Since(startTime).Round(time.Second))
-}
-
-func isWebhook() bool {
-	return MainConfig.Connection == "webhook"
-}
-
-func isDebugMode() bool {
-	return strings.ToLower(os.Getenv("BOT_DEBUG")) == "true"
-}
-
-func isCachedUser(userid int64) bool {
-	newMember := getMember(userid)
-	if newMember == nil {
-		cache.Member = append(cache.Member, ChatMember{
-			Id:            userid,
-			WelcomeShowed: true,
-			Rank:          0,
-			MessageCount:  0,
-		})
-		return true
-	}
-	return false
-}
-
-func isNewMember(Member *tgbotapi.ChatMemberUpdated) bool {
-	if Member.OldChatMember.IsMember && !Member.NewChatMember.IsMember {
-		log.Print("IsMember state changed ", Member.OldChatMember.IsMember, "->", Member.NewChatMember.IsMember)
-		return false
-	}
-
-	return isCachedUser(Member.NewChatMember.User.ID)
-}
-
-func isMessageStartsWithEmoji(update tgbotapi.Update) bool {
-	if update.Message.Entities == nil {
-		return false
-	}
-	if update.Message.Entities[0].Type == "custom_emoji" && update.Message.Entities[0].Offset == 0 && len(update.Message.Text) > 4 {
-		return true
-	}
-	return false
 }
 
 func reload() {

@@ -10,11 +10,9 @@ import (
 )
 
 type Cache struct {
-	Member []ChatMember
-	// Add your actual data structure here
-	// Ex: map[string]interface{}
-	LastChanged int64 `json:"last_changed"`
-	// ... other data fields
+	Member      []ChatMember
+	DeleteList  []WelcomeMessage `json:"DeleteList,omitempty"`
+	LastChanged int64            `json:"last_changed"`
 }
 
 type ChatMember struct {
@@ -76,19 +74,10 @@ func importCache() (bool, error) {
 	fmt.Println("Last changed:", cache.LastChanged)
 	cache.LastChanged = time.Now().Unix()
 	return true, nil
-
-	//return false, nil
 }
 
 func syncData() {
 	for {
-		// imported, err := importData()
-		// if err != nil {
-		// 	fmt.Println("Error importing data:", err)
-		// } else if imported {
-		// 	fmt.Println("Data imported successfully")
-		// }
-
 		// Update last_changed regardless of import status
 		cache.LastChanged = time.Now().Unix()
 
@@ -107,4 +96,20 @@ func getMember(memberId int64) (member *ChatMember) {
 		}
 	}
 	return nil
+}
+
+func clearCachedUser(userid int64) {
+	for id, member := range cache.Member {
+		if member.Id == userid {
+			cache.Member = append(cache.Member[:id], cache.Member[id+1:]...)
+		}
+	}
+}
+
+func clearDeleteListByUser(userid int64) {
+	for id, message := range cache.DeleteList {
+		if message.UserID == userid {
+			cache.DeleteList = append(cache.DeleteList[:id], cache.DeleteList[id+1:]...)
+		}
+	}
 }
