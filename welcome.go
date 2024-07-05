@@ -127,9 +127,10 @@ func welcomeSent(message tgbotapi.Message, userID int64) {
 	})
 }
 
-func CleanUpWelcome() {
+func CleanUpWelcome() int {
 	// Remove entries older than now
 	now := time.Now().UTC()
+	counter := 0
 	if len(cache.DeleteList) > 0 {
 		for id, message := range cache.DeleteList {
 			if message.Timestamp.Before(now) {
@@ -138,8 +139,10 @@ func CleanUpWelcome() {
 				clearCachedUser(message.UserID)
 				clearDeleteListByUser(message.UserID)
 				cache.DeleteList = append(cache.DeleteList[:id], cache.DeleteList[id+1:]...)
+				counter++
 			}
 		}
 		saveCache()
 	}
+	return counter
 }

@@ -38,7 +38,10 @@ func isNewMember(Member *tgbotapi.ChatMemberUpdated) bool {
 		log.Print("IsMember state changed ", Member.OldChatMember.IsMember, "->", Member.NewChatMember.IsMember)
 		return false
 	}
-
+	if Member.NewChatMember.IsMember {
+		return false
+	}
+	log.Print("IsMember ", Member.NewChatMember.IsMember)
 	return isCachedUser(Member.NewChatMember.User.ID)
 }
 
@@ -109,15 +112,7 @@ func getNameLink(user tgbotapi.User) string {
 }
 
 func deleteMessage(chatID int64, messageId int) {
-	deleteConfig := tgbotapi.DeleteMessageConfig{
-		BaseChatMessage: tgbotapi.BaseChatMessage{
-			ChatConfig: tgbotapi.ChatConfig{
-				ChatID: chatID,
-			},
-			MessageID: messageId,
-		},
-	}
-	bot.Send(deleteConfig)
+	bot.Send(tgbotapi.NewDeleteMessage(chatID, messageId))
 }
 
 func isBadMessage(message string) bool {

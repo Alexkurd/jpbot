@@ -53,6 +53,7 @@ func processUpdates(updates tgbotapi.UpdatesChannel) {
 		// Check for callback query
 		if update.CallbackQuery != nil {
 			handleCallback(update.CallbackQuery)
+			continue
 		}
 
 		//Private chat
@@ -61,6 +62,9 @@ func processUpdates(updates tgbotapi.UpdatesChannel) {
 		}
 		//If chat hides userlist
 		if update.ChatMember != nil {
+			if update.ChatMember.NewChatMember.Status == "kicked" {
+				continue
+			}
 			if isNewMember(update.ChatMember) {
 				welcomeNewUser(update, *update.ChatMember.NewChatMember.User)
 				setInitialRights(update, *update.ChatMember.NewChatMember.User)
@@ -143,14 +147,14 @@ func handleCallback(query *tgbotapi.CallbackQuery) {
 			break
 		}
 		log.Print("User " + query.From.UserName + ":" + strconv.Itoa(int(query.From.ID)) + " clicked his button")
-		if isUserCasBanned(int(query.From.ID)) {
-			//First step: only log
-			log.Print("User " + query.From.UserName + ":" + strconv.Itoa(int(query.From.ID)) + " is CasBanned")
-			//answerCallbackQuery(query.ID, "Sorry, Casban")
+		if isUserApiBanned(int(query.From.ID)) {
+			answerCallbackQuery(query.ID, "Sorry, Api Ban")
+			BanChatMember(query.Message.Chat.ID, query.From.ID, 0)
+		} else {
+			upgradeUserRights(query.Message.Chat.ID, query.From.ID)
+			answerCallbackQuery(query.ID, "Rights upgraded!")
 		}
 		deleteMessage(query.Message.Chat.ID, query.Message.MessageID)
-		upgradeUserRights(query.Message.Chat.ID, query.From.ID)
-		answerCallbackQuery(query.ID, "Rights upgraded!")
 	// handle other callbacks here
 	case "show_menu":
 		deleteMessage(query.Message.Chat.ID, query.Message.MessageID)
@@ -197,7 +201,7 @@ func processCommands(command string, message tgbotapi.Message) {
 	msg := tgbotapi.NewMessage(message.Chat.ID, "")
 	switch command {
 	case "help":
-		msg.Text = "I understand /uptime and /status."
+		msg.Text = "I understand /uptime and /start."
 		msg.ReplyParameters.MessageID = message.MessageID
 	case "uptime":
 		msg.Text = "Uptime: " + uptime()
@@ -215,6 +219,17 @@ func processCommands(command string, message tgbotapi.Message) {
 		say()
 	case "deletequeue":
 		msg.Text = ToDeleteQueue()
+	case "cleanup":
+		counter := CleanUpWelcome()
+		msg.Text = "Cleaned " + strconv.Itoa(counter) + " messages"
+	case "debug_mode":
+		if bot.Debug {
+			bot.Debug = false
+			msg.Text = "Debug mode off"
+		} else {
+			bot.Debug = true
+			msg.Text = "Debug mode on"
+		}
 	default:
 		msg.Text = ""
 	}
