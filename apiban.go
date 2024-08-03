@@ -10,7 +10,7 @@ import (
 )
 
 var CASBAN_API = "https://api.cas.chat/check?user_id="
-var LOLSBOT_API = "https://lols.bot/?a="
+var LOLSBOT_API = "https://api.lols.bot/account?id="
 
 type casban_response struct {
 	Status      bool   `json:"ok"`
@@ -20,9 +20,9 @@ type casban_response struct {
 var casban casban_response
 
 type lolsbot_response struct {
-	Status   bool `json:"banned"`
-	Offenses int  `json:"offenses"`
-	Score    int  `json:"spam_factor"`
+	Status   bool    `json:"banned"`
+	Offenses int     `json:"offenses"`
+	Score    float32 `json:"spam_factor"`
 }
 
 var lolsbot lolsbot_response
@@ -30,7 +30,8 @@ var lolsbot lolsbot_response
 func isUserApiBanned(userid int) bool {
 	casbanned := isUserCasBanned(userid)
 	lolsbanned := isUserLolsBanned(userid)
-
+	log.Printf("CAS: %t", casbanned)
+	log.Printf("LOLS %t", lolsbanned)
 	return casbanned || lolsbanned
 }
 
@@ -43,6 +44,11 @@ func isUserCasBanned(userid int) bool {
 	}
 
 	defer resp.Body.Close()
+	// Check for successful response status code
+	if resp.StatusCode != http.StatusOK {
+		fmt.Println("Error:", resp.StatusCode)
+		return false
+	}
 
 	// Read response body
 	body, err := io.ReadAll(resp.Body)
@@ -72,7 +78,11 @@ func isUserLolsBanned(userid int) bool {
 	}
 
 	defer resp.Body.Close()
-
+	// Check for successful response status code
+	if resp.StatusCode != http.StatusOK {
+		fmt.Println("Error:", resp.StatusCode)
+		return false
+	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		fmt.Println("Error reading response body:", err)
