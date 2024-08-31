@@ -52,6 +52,7 @@ func welcomeNewUser(update tgbotapi.Update, user tgbotapi.User) {
 	} else {
 		messageSent, _ := bot.Send(msg)
 		welcomeSent(messageSent, user.ID)
+		log.Println("Welcome sent ", messageSent.MessageID, " user "+user.UserName, user.ID)
 		saveCache()
 	}
 }
@@ -118,12 +119,12 @@ func answerCallbackQuery(callbackQueryID string, text string) {
 }
 
 func welcomeSent(message tgbotapi.Message, userID int64) {
-	// Add message with timestamp + 24 hours
+	// Add message with timestamp + 2 hours
 	cache.DeleteList = append(cache.DeleteList, WelcomeMessage{
 		ID:        message.MessageID,
 		UserID:    userID,
 		ChatID:    message.Chat.ID,
-		Timestamp: time.Now().UTC().Add(time.Hour * 24),
+		Timestamp: time.Now().UTC().Add(time.Hour * 2),
 	})
 }
 
@@ -132,13 +133,15 @@ func CleanUpWelcome() int {
 	now := time.Now().UTC()
 	counter := 0
 	if len(cache.DeleteList) > 0 {
-		for id, message := range cache.DeleteList {
-			if message.Timestamp.Before(now) {
-				deleteMessage(message.ChatID, message.ID)
-				kickChatMember(message.ChatID, message.UserID)
-				clearCachedUser(message.UserID)
-				clearDeleteListByUser(message.UserID)
+		for id := 0; id < len(cache.DeleteList); id++ {
+			if cache.DeleteList[id].Timestamp.Before(now) {
+				log.Println("Deleting message id", cache.DeleteList[id].ID)
+				deleteMessage(cache.DeleteList[id].ChatID, cache.DeleteList[id].ID)
+				kickChatMember(cache.DeleteList[id].ChatID, cache.DeleteList[id].UserID)
+				clearCachedUser(cache.DeleteList[id].UserID)
+				//clearDeleteListByUser(message.UserID)
 				cache.DeleteList = append(cache.DeleteList[:id], cache.DeleteList[id+1:]...)
+				id--
 				counter++
 			}
 		}

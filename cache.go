@@ -102,6 +102,7 @@ func clearCachedUser(userid int64) {
 	for id, member := range cache.Member {
 		if member.Id == userid {
 			cache.Member = append(cache.Member[:id], cache.Member[id+1:]...)
+			break
 		}
 	}
 }
