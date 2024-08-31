@@ -214,11 +214,16 @@ func processCommands(command string, message tgbotapi.Message) {
 		reload()
 		msg.Text = "Reloaded"
 	case "triggers":
+		msg.ParseMode = "HTML"
 		msg.Text = getTriggersList()
 	case "say":
-		say()
+		msg.Text = "Select chat to send"
+		msg.ReplyMarkup = say()
 	case "deletequeue":
 		msg.Text = ToDeleteQueue()
+	case "welcomequeue":
+		CleanWelcomeQueue()
+		msg.Text = "Welcome queue cleaned"
 	case "cleanup":
 		counter := CleanUpWelcome()
 		msg.Text = "Cleaned " + strconv.Itoa(counter) + " messages"
@@ -234,16 +239,31 @@ func processCommands(command string, message tgbotapi.Message) {
 		msg.Text = ""
 	}
 	if msg.Text != "" {
-		bot.Send(msg)
+		_, err = bot.Send(msg)
+		if err != nil {
+			log.Println(err)
+		}
 	}
 }
 
-func say() {
-	//chat :=tgbotapi.
+func say() tgbotapi.ReplyKeyboardMarkup {
+	var buttonRow []tgbotapi.KeyboardButton
+
+	buttonRow = append(buttonRow,
+		tgbotapi.KeyboardButton{
+			RequestChat: &tgbotapi.KeyboardButtonRequestChat{RequestID: 1000, BotIsMember: true},
+			Text:        "Select chat",
+		})
+
+	return tgbotapi.NewOneTimeReplyKeyboard(buttonRow)
 }
 
 func ToDeleteQueue() string {
 	return fmt.Sprintln(cache.DeleteList)
+}
+
+func CleanWelcomeQueue() {
+	cache.Member = nil
 }
 
 func uptime() string {

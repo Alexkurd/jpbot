@@ -72,10 +72,10 @@ func registerCommandHandlers() {
 		Command:     "/start",
 		Description: "Показать главное меню",
 	},
-	// tgbotapi.BotCommand{
-	// 	Command:     "/triggers",
-	// 	Description: "Список быстрых команд",
-	// },
+		tgbotapi.BotCommand{
+			Command:     "/triggers",
+			Description: "Список быстрых команд",
+		},
 	)
 
 	/*for _, item := range menu {
