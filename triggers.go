@@ -58,14 +58,22 @@ func CheckTriggerMessage(message *tgbotapi.Message) bool {
 		}
 		if triggered {
 			trigger.Actions = strings.Replace(trigger.Actions, "{reply_to_namelink}", getNameLink(*message.From), -1)
-			//msg := tgbotapi.NewPhoto(message.Chat.ID, trigger.Picture)
-			msg := tgbotapi.NewMessage(message.Chat.ID, trigger.Actions)
-			//msg.Entities = append(msg.Entities, )
-			msg.ReplyParameters.MessageID = message.MessageID
-			if !trigger.ShowPreview {
-				msg.LinkPreviewOptions.IsDisabled = true
+			var msg tgbotapi.Chattable
+			if len(trigger.Picture) > 0 {
+				photoConfig := tgbotapi.NewPhoto(message.Chat.ID, tgbotapi.FileID(trigger.Picture))
+				photoConfig.Caption = trigger.Actions
+				photoConfig.ParseMode = "HTML"
+				msg = photoConfig
+			} else {
+				messageConfig := tgbotapi.NewMessage(message.Chat.ID, trigger.Actions)
+				messageConfig.ParseMode = "HTML"
+				messageConfig.ReplyParameters.MessageID = message.MessageID
+				if !trigger.ShowPreview {
+					messageConfig.LinkPreviewOptions.IsDisabled = true
+				}
+				msg = messageConfig
 			}
-			msg.ParseMode = "HTML"
+
 			if emulate {
 				log.Print("Emulate:TriggeredGood:", message.Text)
 				triggered = false
