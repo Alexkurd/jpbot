@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"os"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -28,12 +29,14 @@ type combotTrigger struct {
 }
 
 type oldTrigger struct {
-	Name        string         `yaml:"name"`
-	Conditions  []oldCondition `yaml:"condition"`
-	Actions     string         `yaml:"actiontext"`
-	ShowPreview bool           `default:"false" yaml:"showpreview"`
-	Picture     string         `default:"" yaml:"picture"`
-	Section     string         `yaml:"section"`
+	Name           string         `yaml:"name"`
+	Conditions     []oldCondition `yaml:"condition"`
+	CheckSubstring bool           `default:"false" yaml:"substringSearch"`
+	CheckRegexp    bool           `default:"false" yaml:"regexpSearch"`
+	Actions        string         `yaml:"actiontext"`
+	ShowPreview    bool           `default:"false" yaml:"showpreview"`
+	Picture        string         `default:"" yaml:"picture"`
+	Section        string         `yaml:"section"`
 }
 
 type oldCondition struct {
@@ -54,6 +57,19 @@ func CheckTriggerMessage(message *tgbotapi.Message) bool {
 			if strings.EqualFold(message.Text, condition.Value) {
 				triggered = true
 				continue
+			}
+			if isQuestion(message.Text) && trigger.CheckSubstring {
+				if strings.Contains(strings.ToLower(message.Text), strings.ToLower(condition.Value)) {
+					triggered = true
+					continue
+				}
+			}
+			if isQuestion(message.Text) && trigger.CheckRegexp {
+				regex := regexp.MustCompile(condition.Value)
+				if regex.MatchString(message.Text) {
+					triggered = true
+					continue
+				}
 			}
 		}
 		if triggered {
@@ -88,6 +104,10 @@ func CheckTriggerMessage(message *tgbotapi.Message) bool {
 		}
 	}
 	return triggered
+}
+
+func isQuestion(message string) bool {
+	return strings.Contains(message, "?")
 }
 
 func readTriggers() {

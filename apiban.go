@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 )
 
 var CASBAN_API = "https://api.cas.chat/check?user_id="
@@ -36,6 +37,7 @@ func isUserApiBanned(userid int) bool {
 }
 
 func isUserCasBanned(userid int) bool {
+	http.DefaultClient.Timeout = 10 * time.Second
 	// Send GET request
 	resp, err := http.Get(CASBAN_API + fmt.Sprint(userid))
 	if err != nil {
@@ -46,7 +48,7 @@ func isUserCasBanned(userid int) bool {
 	defer resp.Body.Close()
 	// Check for successful response status code
 	if resp.StatusCode != http.StatusOK {
-		fmt.Println("Error:", resp.StatusCode)
+		fmt.Println("Error status code:", resp.StatusCode)
 		return false
 	}
 
@@ -70,6 +72,7 @@ func isUserCasBanned(userid int) bool {
 }
 
 func isUserLolsBanned(userid int) bool {
+	http.DefaultClient.Timeout = 10 * time.Second
 	// Send GET request
 	resp, err := http.Get(LOLSBOT_API + fmt.Sprint(userid))
 	if err != nil {

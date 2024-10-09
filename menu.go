@@ -62,7 +62,7 @@ func flattenMenu(menu []Menu) map[string]Menu {
 	return flatItems
 }
 
-// Add commands for Mennu button
+// Add commands for Menu button
 func registerCommandHandlers() {
 
 	//Generate commands for Menu button
