@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
@@ -26,6 +27,7 @@ type Config struct {
 }
 
 var emulate = false
+var forceProtection = true
 
 var MainConfig Config
 var startTime time.Time
@@ -44,6 +46,7 @@ func main() {
 	var updates tgbotapi.UpdatesChannel
 	botInit()
 	afterBotInit()
+	//	initMetrics()
 	updates = startBot()
 	processUpdates(updates)
 } //End main()
@@ -58,7 +61,7 @@ func processUpdates(updates tgbotapi.UpdatesChannel) {
 
 		//Private chat
 		if update.MyChatMember != nil {
-			log.Print("New MyChatMember", update.MyChatMember.NewChatMember.User.ID)
+			slog.Info(fmt.Sprintf("New MyChatMember %d", update.MyChatMember.NewChatMember.User.ID))
 		}
 		//If chat hides userlist
 		if update.ChatMember != nil {
@@ -66,8 +69,16 @@ func processUpdates(updates tgbotapi.UpdatesChannel) {
 				continue
 			}
 			if isNewMember(update.ChatMember) {
-				welcomeNewUser(update, *update.ChatMember.NewChatMember.User)
 				setInitialRights(update, *update.ChatMember.NewChatMember.User)
+				if forceProtection {
+					if isUserApiBanned(int(update.ChatMember.NewChatMember.User.ID)) {
+						BanChatMember(update.ChatMember.Chat.ID, update.ChatMember.NewChatMember.User.ID, 0)
+					} else {
+						welcomeNewUser(update, *update.ChatMember.NewChatMember.User)
+					}
+				} else {
+					welcomeNewUser(update, *update.ChatMember.NewChatMember.User)
+				}
 			}
 		}
 
@@ -92,8 +103,8 @@ func processUpdates(updates tgbotapi.UpdatesChannel) {
 
 		//Handle member left
 		if update.Message.LeftChatMember != nil {
-			log.Print("Member left: " + update.Message.LeftChatMember.UserName)
-			log.Print("Update.Message" + update.Message.Text)
+			slog.Info("Member left: " + update.Message.LeftChatMember.UserName)
+			slog.Info("Update.Message" + update.Message.Text)
 			//log.Print(fmt.Printf("%+v\n", update.Message))
 		}
 
@@ -113,12 +124,12 @@ func processUpdates(updates tgbotapi.UpdatesChannel) {
 		}
 
 		if isMessageStartsWithEmoji(update) {
-			log.Print("Deleted message with emoji - ", update.Message.From.UserName)
+			slog.Info("Deleted message with emoji - " + update.Message.From.UserName)
 			deleteMessage(update.Message.Chat.ID, update.Message.MessageID)
 		}
 
 		if isChannelMessage(update) {
-			log.Print("Deleted message from channel - ", update.Message.SenderChat.UserName)
+			slog.Info("Deleted message from channel - " + update.Message.SenderChat.UserName)
 			deleteMessage(update.Message.Chat.ID, update.Message.MessageID)
 			continue
 		}
@@ -138,15 +149,15 @@ func handleCallback(query *tgbotapi.CallbackQuery) {
 	var callback Command
 	err := json.Unmarshal([]byte(query.Data), &callback)
 	if err != nil {
-		log.Print(err)
+		slog.Warn("Callback error:", "error", err)
 	}
 	switch callback.Command {
 	case "upgrade_rights":
 		if callback.Data != strconv.Itoa(int(query.From.ID)) {
-			log.Print("User " + query.From.UserName + ":" + strconv.Itoa(int(query.From.ID)) + " clicked wrong button")
+			slog.Info(fmt.Sprintf("User %s(%d) clicked wrong button", query.From.UserName, query.From.ID))
 			break
 		}
-		log.Print("User " + query.From.UserName + ":" + strconv.Itoa(int(query.From.ID)) + " clicked his button")
+		slog.Info(fmt.Sprintf("User %s(%d) clicked his button", query.From.UserName, query.From.ID))
 		if isUserApiBanned(int(query.From.ID)) {
 			answerCallbackQuery(query.ID, "Sorry, Api Ban")
 			BanChatMember(query.Message.Chat.ID, query.From.ID, 0)
@@ -221,6 +232,9 @@ func processCommands(command string, message tgbotapi.Message) {
 		msg.ReplyMarkup = say()
 	case "deletequeue":
 		msg.Text = ToDeleteQueue()
+	case "checkqueue":
+		counter := checkBanQueue()
+		msg.Text = "Cleaned " + strconv.Itoa(counter) + " messages"
 	case "welcomequeue":
 		CleanWelcomeQueue()
 		msg.Text = "Welcome queue cleaned"
@@ -228,13 +242,9 @@ func processCommands(command string, message tgbotapi.Message) {
 		counter := CleanUpWelcome()
 		msg.Text = "Cleaned " + strconv.Itoa(counter) + " messages"
 	case "debug_mode":
-		if bot.Debug {
-			bot.Debug = false
-			msg.Text = "Debug mode off"
-		} else {
-			bot.Debug = true
-			msg.Text = "Debug mode on"
-		}
+		msg.Text = toggle_debugMode()
+	case "force_mode":
+		msg.Text = toggle_forceMode()
 	default:
 		msg.Text = ""
 	}
@@ -264,6 +274,20 @@ func ToDeleteQueue() string {
 
 func CleanWelcomeQueue() {
 	cache.Member = nil
+}
+
+func checkBanQueue() int {
+	counter := 0
+	if len(cache.DeleteList) > 0 {
+		for id := 0; id < len(cache.DeleteList); id++ {
+			if isUserApiBanned(int(cache.DeleteList[id].UserID)) {
+				cache.DeleteList[id].Timestamp = time.Now().UTC()
+				counter++
+			}
+		}
+	}
+	CleanUpWelcome()
+	return counter
 }
 
 func uptime() string {
@@ -307,7 +331,7 @@ func botInit() {
 		bot.Debug = true
 	}
 
-	log.Printf("Authorized on account %s", bot.Self.UserName)
+	slog.Info(fmt.Sprintf("Authorized on account %s", bot.Self.UserName))
 }
 
 func afterBotInit() {

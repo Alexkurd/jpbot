@@ -7,7 +7,9 @@ package main
 */
 
 import (
+	"fmt"
 	"log"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -52,13 +54,13 @@ func welcomeNewUser(update tgbotapi.Update, user tgbotapi.User) {
 	} else {
 		messageSent, _ := bot.Send(msg)
 		welcomeSent(messageSent, user.ID)
-		log.Println("Welcome sent ", messageSent.MessageID, " user "+user.UserName, user.ID)
+		slog.Debug(fmt.Sprintf("Welcome sent %d, user %s(%d)", messageSent.MessageID, user.UserName, user.ID))
 		saveCache()
 	}
 }
 
 func setInitialRights(update tgbotapi.Update, user tgbotapi.User) {
-	log.Print("Setting rights for user: ", user.ID, " ", user.UserName)
+	slog.Info(fmt.Sprintf("Setting rights for user: %s(%d)", user.UserName, user.ID))
 	//Set user rights to read-only initially
 	if emulate {
 		return
@@ -135,7 +137,7 @@ func CleanUpWelcome() int {
 	if len(cache.DeleteList) > 0 {
 		for id := 0; id < len(cache.DeleteList); id++ {
 			if cache.DeleteList[id].Timestamp.Before(now) {
-				log.Println("Deleting message id", cache.DeleteList[id].ID)
+				slog.Info(fmt.Sprintf("Deleting message id %d", cache.DeleteList[id].ID))
 				deleteMessage(cache.DeleteList[id].ChatID, cache.DeleteList[id].ID)
 				kickChatMember(cache.DeleteList[id].ChatID, cache.DeleteList[id].UserID)
 				clearCachedUser(cache.DeleteList[id].UserID)

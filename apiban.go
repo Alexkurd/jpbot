@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
@@ -31,8 +31,7 @@ var lolsbot lolsbot_response
 func isUserApiBanned(userid int) bool {
 	casbanned := isUserCasBanned(userid)
 	lolsbanned := isUserLolsBanned(userid)
-	log.Printf("CAS: %t", casbanned)
-	log.Printf("LOLS %t", lolsbanned)
+	slog.Info(fmt.Sprintf("User %d ban status: CAS:%t LOLS:%t", userid, casbanned, lolsbanned))
 	return casbanned || lolsbanned
 }
 
@@ -41,32 +40,31 @@ func isUserCasBanned(userid int) bool {
 	// Send GET request
 	resp, err := http.Get(CASBAN_API + fmt.Sprint(userid))
 	if err != nil {
-		fmt.Println("Error sending request:", err)
+		slog.Warn("Error sending request:", "error", err)
 		return false
 	}
 
 	defer resp.Body.Close()
 	// Check for successful response status code
 	if resp.StatusCode != http.StatusOK {
-		fmt.Println("Error status code:", resp.StatusCode)
+		slog.Warn("Error status code:", "statusCode", resp.StatusCode)
 		return false
 	}
 
 	// Read response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		fmt.Println("Error reading response body:", err)
+		slog.Warn("Error reading response body:", "error", err)
 		return false
 	}
 
 	err = json.Unmarshal(body, &casban)
 	if err != nil {
-		fmt.Println("Error unmarshalling JSON:", err)
+		slog.Warn("Error unmarshalling JSON:", "error", err)
 		return false
 	}
 	if casban.Status {
-		log.Print("User " + strconv.Itoa(userid) + " is CasBanned")
-		log.Print(casban)
+		slog.Debug("User "+strconv.Itoa(userid)+" is CasBanned", "response", casban)
 	}
 	return casban.Status
 }
@@ -76,30 +74,30 @@ func isUserLolsBanned(userid int) bool {
 	// Send GET request
 	resp, err := http.Get(LOLSBOT_API + fmt.Sprint(userid))
 	if err != nil {
-		fmt.Println("Error sending request:", err)
+		slog.Warn("Error sending request:", "error", err)
 		return false
 	}
 
 	defer resp.Body.Close()
 	// Check for successful response status code
 	if resp.StatusCode != http.StatusOK {
-		fmt.Println("Error:", resp.StatusCode)
+		slog.Warn("Error status code:", "statusCode", resp.StatusCode)
 		return false
 	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		fmt.Println("Error reading response body:", err)
+		slog.Warn("Error reading response body:", "error", err)
 		return false
 	}
 
 	err = json.Unmarshal(body, &lolsbot)
 	if err != nil {
-		fmt.Println("Error unmarshalling JSON:", err)
+		slog.Warn("Error unmarshalling JSON:", "error", err)
 		return false
 	}
 
 	if lolsbot.Status {
-		log.Print("User " + strconv.Itoa(userid) + " is LolsBanned")
+		slog.Debug("User "+strconv.Itoa(userid)+" is CasBanned", "response", lolsbot)
 	}
 
 	return lolsbot.Status

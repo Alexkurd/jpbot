@@ -1,7 +1,9 @@
 package main
 
 import (
+	"fmt"
 	"log"
+	"log/slog"
 	"os"
 	"regexp"
 	"sort"
@@ -97,10 +99,10 @@ func CheckTriggerMessage(message *tgbotapi.Message) bool {
 			}
 			_, err := bot.Request(msg)
 			if err != nil {
-				log.Print("TriggeredBad: ", err, message.Text)
+				slog.Warn("TriggeredBad: ", "error", err, "message", message.Text)
 			}
 			triggered = false
-			log.Print("TriggeredGood:", message.Text)
+			slog.Info(fmt.Sprintf("TriggeredGood: %s", message.Text))
 		}
 	}
 	return triggered
@@ -119,8 +121,8 @@ func readTriggers() {
 	if err != nil {
 		log.Panic(err)
 	}
-	log.Println("Triggers loaded: ", len(oldconfig.Trigger))
-	log.Println("Sections loaded: ", len(oldconfig.Section))
+	slog.Info(fmt.Sprintf("Triggers loaded: %d", len(oldconfig.Trigger)))
+	slog.Info(fmt.Sprintf("Sections loaded: %d", len(oldconfig.Section)))
 
 	sort.Slice(oldconfig.Trigger, func(i, j int) bool {
 		return oldconfig.Trigger[i].Name < oldconfig.Trigger[j].Name

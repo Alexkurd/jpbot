@@ -1,7 +1,9 @@
 package main
 
 import (
+	"fmt"
 	"log"
+	"log/slog"
 	"os"
 	"regexp"
 	"strconv"
@@ -35,13 +37,13 @@ func isCachedUser(userid int64) bool {
 
 func isNewMember(Member *tgbotapi.ChatMemberUpdated) bool {
 	if Member.OldChatMember.IsMember && !Member.NewChatMember.IsMember {
-		log.Print("IsMember state changed ", Member.OldChatMember.IsMember, "->", Member.NewChatMember.IsMember)
+		slog.Info(fmt.Sprintf("IsMember state changed %t -> %t", Member.OldChatMember.IsMember, Member.NewChatMember.IsMember))
 		return false
 	}
 	if Member.NewChatMember.IsMember {
 		return false
 	}
-	log.Print("IsMember ", Member.NewChatMember.IsMember)
+	slog.Info(fmt.Sprintf("IsMember %t", Member.NewChatMember.IsMember))
 	return isCachedUser(Member.NewChatMember.User.ID)
 }
 
@@ -75,7 +77,7 @@ func BanChatMember(chatID int64, userID int64, untilDate int64) {
 		UntilDate: untilDate,
 	}
 	bot.Send(config)
-	log.Print("User banned: ", userID, " until ", untilDate)
+	slog.Info(fmt.Sprintf("User banned: %d until %d", userID, untilDate))
 }
 
 func isChannelMessage(update tgbotapi.Update) bool {
@@ -131,4 +133,30 @@ func isBadMessage(message string) bool {
 		}
 	}
 	return false
+}
+
+func toggle_debugMode() string {
+	msg := ""
+	if bot.Debug {
+		bot.Debug = false
+		msg = "Debug mode off"
+	} else {
+		bot.Debug = true
+		msg = "Debug mode on"
+	}
+	slog.Info(msg)
+	return msg
+}
+
+func toggle_forceMode() string {
+	msg := ""
+	if forceProtection {
+		forceProtection = false
+		msg = "ForceProtection mode off"
+	} else {
+		forceProtection = true
+		msg = "ForceProtection mode on"
+	}
+	slog.Info(msg)
+	return msg
 }
