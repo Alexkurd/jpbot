@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	tgbotapi "github.com/Alexkurd/telegram-bot-api/v7"
+	tgbotapi "github.com/OvyFlash/telegram-bot-api"
 )
 
 func isWebhook() bool {
@@ -159,4 +159,13 @@ func toggle_forceMode() string {
 	}
 	slog.Info(msg)
 	return msg
+}
+
+func isAdmin(userId int64) bool {
+	for _, admin := range MainConfig.Admins {
+		if int64(admin) == userId {
+			return true
+		}
+	}
+	return false
 }
