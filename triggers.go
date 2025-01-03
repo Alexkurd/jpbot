@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	tgbotapi "github.com/Alexkurd/telegram-bot-api/v7"
+	tgbotapi "github.com/OvyFlash/telegram-bot-api"
 	"gopkg.in/yaml.v3"
 )
 

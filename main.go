@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	tgbotapi "github.com/Alexkurd/telegram-bot-api/v7"
+	tgbotapi "github.com/OvyFlash/telegram-bot-api"
 	"gopkg.in/yaml.v3"
 )
 
@@ -24,6 +24,7 @@ type Config struct {
 	WelcomeMessage       string            `yaml:"welcome_message"`
 	WelcomeButtonMessage string            `yaml:"welcome_button_message"`
 	DenyBots             []string          `yaml:"denybots"`
+	Admins               []int             `yaml:"admins"`
 }
 
 var emulate = false
@@ -113,28 +114,34 @@ func processUpdates(updates tgbotapi.UpdatesChannel) {
 		}
 
 		// Check for forbidden text
-		if isBadMessage(update.Message.Text) {
-			if emulate {
-				log.Print(update.Message.Chat.ID, update.Message.MessageID)
+		if !isAdmin(update.Message.Chat.ID) {
+			// Check Bad text message
+			if isBadMessage(update.Message.Text) {
+				if emulate {
+					log.Print(update.Message.Chat.ID, update.Message.MessageID)
+					continue
+				}
+				deleteMessage(update.Message.Chat.ID, update.Message.MessageID)
+				CleanUpWelcome()
 				continue
 			}
-			deleteMessage(update.Message.Chat.ID, update.Message.MessageID)
-			CleanUpWelcome()
-			continue
-		}
-
-		if isMessageStartsWithEmoji(update) {
-			slog.Info("Deleted message with emoji - " + update.Message.From.UserName)
-			deleteMessage(update.Message.Chat.ID, update.Message.MessageID)
-		}
-
-		if isChannelMessage(update) {
-			slog.Info("Deleted message from channel - " + update.Message.SenderChat.UserName)
-			deleteMessage(update.Message.Chat.ID, update.Message.MessageID)
-			continue
+			//Check message starting with emoji. Usually spam.
+			if isMessageStartsWithEmoji(update) {
+				slog.Info("Deleted message with emoji - " + update.Message.From.UserName)
+				deleteMessage(update.Message.Chat.ID, update.Message.MessageID)
+			}
+			//Check message from channel
+			if isChannelMessage(update) {
+				slog.Info("Deleted message from channel - " + update.Message.SenderChat.UserName)
+				deleteMessage(update.Message.Chat.ID, update.Message.MessageID)
+				continue
+			}
 		}
 
 		CheckTriggerMessage(update.Message)
+		if isAdmin(update.Message.From.ID) {
+			slog.Info("New Admin from " + update.Message.From.UserName)
+		}
 
 		//Fix rights for the newcomers
 		fixRights(update)
@@ -147,22 +154,26 @@ func handleCallback(query *tgbotapi.CallbackQuery) {
 		Data    string `json:"data"`
 	}
 	var callback Command
+	var user int64
 	err := json.Unmarshal([]byte(query.Data), &callback)
 	if err != nil {
 		slog.Warn("Callback error:", "error", err)
 	}
 	switch callback.Command {
 	case "upgrade_rights":
-		if callback.Data != strconv.Itoa(int(query.From.ID)) {
-			slog.Info(fmt.Sprintf("User %s(%d) clicked wrong button", query.From.UserName, query.From.ID))
-			break
+		user, err = strconv.ParseInt(callback.Data, 10, 64)
+		if !isAdmin(query.From.ID) {
+			if user != query.From.ID {
+				slog.Info(fmt.Sprintf("User %s(%d) clicked wrong button", query.From.UserName, query.From.ID))
+				break
+			}
 		}
 		slog.Info(fmt.Sprintf("User %s(%d) clicked his button", query.From.UserName, query.From.ID))
-		if isUserApiBanned(int(query.From.ID)) {
+		if isUserApiBanned(int(user)) {
 			answerCallbackQuery(query.ID, "Sorry, Api Ban")
-			BanChatMember(query.Message.Chat.ID, query.From.ID, 0)
+			BanChatMember(query.Message.Chat.ID, user, 0)
 		} else {
-			upgradeUserRights(query.Message.Chat.ID, query.From.ID)
+			upgradeUserRights(query.Message.Chat.ID, user)
 			answerCallbackQuery(query.ID, "Rights upgraded!")
 		}
 		deleteMessage(query.Message.Chat.ID, query.Message.MessageID)

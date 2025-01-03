@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	tgbotapi "github.com/Alexkurd/telegram-bot-api/v7"
+	tgbotapi "github.com/OvyFlash/telegram-bot-api"
 )
 
 type WelcomeMessage struct {
