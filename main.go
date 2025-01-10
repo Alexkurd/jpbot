@@ -114,7 +114,7 @@ func processUpdates(updates tgbotapi.UpdatesChannel) {
 		}
 
 		// Check for forbidden text
-		if !isAdmin(update.Message.Chat.ID) {
+		if !isAdmin(update.Message.From.ID) {
 			// Check Bad text message
 			if isBadMessage(update.Message.Text) {
 				if emulate {
@@ -139,9 +139,6 @@ func processUpdates(updates tgbotapi.UpdatesChannel) {
 		}
 
 		CheckTriggerMessage(update.Message)
-		if isAdmin(update.Message.From.ID) {
-			slog.Info("New Admin from " + update.Message.From.UserName)
-		}
 
 		//Fix rights for the newcomers
 		fixRights(update)
