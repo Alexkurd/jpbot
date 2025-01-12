@@ -10,3 +10,7 @@ ranks:
   0: "Начинающий турист"
 100: "Зародыш туриста"
 rankMessage: "{name} получает уровень {newlvl} и звание: {newrank}"
+admins:
+  - 0
+pinnedMessageId: 0
+pinnedMessage: ""

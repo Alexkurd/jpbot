@@ -25,6 +25,8 @@ type Config struct {
 	WelcomeButtonMessage string            `yaml:"welcome_button_message"`
 	DenyBots             []string          `yaml:"denybots"`
 	Admins               []int             `yaml:"admins"`
+	PinnedMessage        string            `yaml:"pinnedMessage"`
+	PinnedMessageId      int               `yaml:"pinnedMessageId"`
 }
 
 var emulate = false
@@ -98,6 +100,7 @@ func processUpdates(updates tgbotapi.UpdatesChannel) {
 				if isCachedUser(newMember.ID) {
 					welcomeNewUser(update, newMember)
 					setInitialRights(update, newMember)
+					continue
 				}
 			}
 		}
@@ -107,6 +110,7 @@ func processUpdates(updates tgbotapi.UpdatesChannel) {
 			slog.Info("Member left: " + update.Message.LeftChatMember.UserName)
 			slog.Info("Update.Message" + update.Message.Text)
 			//log.Print(fmt.Printf("%+v\n", update.Message))
+			continue
 		}
 
 		if isDenyBot(update.Message) {
@@ -136,6 +140,13 @@ func processUpdates(updates tgbotapi.UpdatesChannel) {
 				deleteMessage(update.Message.Chat.ID, update.Message.MessageID)
 				continue
 			}
+		} else {
+			//AdminsZone
+			if update.Message.ChatShared != nil {
+				if update.Message.ChatShared.RequestID == 1000 { //pin message
+					pinMessage(update.Message.ChatShared.ChatID)
+				}
+			}
 		}
 
 		CheckTriggerMessage(update.Message)
@@ -143,6 +154,13 @@ func processUpdates(updates tgbotapi.UpdatesChannel) {
 		//Fix rights for the newcomers
 		fixRights(update)
 	}
+}
+
+func pinMessage(id int64) {
+	msg := tgbotapi.NewMessage(id, getPinnedMessage())
+	msg.ParseMode = "HTML"
+	mId, _ := bot.Send(msg)
+	slog.Info(fmt.Sprintf("Pinned message ID: %d", mId.MessageID))
 }
 
 func handleCallback(query *tgbotapi.CallbackQuery) {

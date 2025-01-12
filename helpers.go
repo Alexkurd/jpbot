@@ -169,3 +169,11 @@ func isAdmin(userId int64) bool {
 	}
 	return false
 }
+
+func getPinnedMessage() string {
+	return MainConfig.PinnedMessage
+}
+
+func getPinnedMessageId() int {
+	return MainConfig.PinnedMessageId
+}
