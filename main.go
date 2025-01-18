@@ -86,6 +86,9 @@ func processUpdates(updates tgbotapi.UpdatesChannel) {
 		}
 
 		if update.Message == nil { // ignore any non-Message updates
+			if update.EditedMessage != nil {
+				CheckTriggerMessage(update.EditedMessage)
+			}
 			continue
 		}
 
@@ -201,7 +204,7 @@ func handleCallback(query *tgbotapi.CallbackQuery) {
 		bot.Send(msg)
 	case "show_root_menu":
 		deleteMessage(query.Message.Chat.ID, query.Message.MessageID)
-		msg := tgbotapi.NewMessage(query.Message.Chat.ID, "Посмотрите готовые статьи")
+		msg := tgbotapi.NewMessage(query.Message.Chat.ID, "Дополнительные команды в кнопке меню.\r\n Посмотрите готовые статьи")
 		msg.ParseMode = "HTML"
 		msg.ReplyMarkup = rootMenu()
 		bot.Send(msg)
@@ -244,7 +247,7 @@ func processCommands(command string, message tgbotapi.Message) {
 		msg.Text = "Uptime: " + uptime()
 		msg.ReplyParameters.MessageID = message.MessageID
 	case "start":
-		msg.Text = "Посмотрите готовые статьи"
+		msg.Text = "Дополнительные команды в кнопке меню.\r\nПосмотрите готовые статьи"
 		msg.ReplyMarkup = rootMenu()
 		deleteMessage(message.Chat.ID, message.MessageID)
 	case "reload":

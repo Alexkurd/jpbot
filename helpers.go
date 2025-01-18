@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"log/slog"
 	"os"
 	"regexp"
@@ -98,7 +97,7 @@ func isDenyBot(message *tgbotapi.Message) bool {
 }
 
 func getNameLink(user tgbotapi.User) string {
-	log.Print(user)
+	slog.Info("User:", "user", user)
 	userid := strconv.Itoa(int(user.ID))
 	name := ""
 	if user.FirstName != "" {
@@ -122,12 +121,12 @@ func isBadMessage(message string) bool {
 		if word[0] == 'r' {
 			regex := regexp.MustCompile(word[2:])
 			if regex.MatchString(message) {
-				log.Print("TriggeredBad: ", word[2:])
+				slog.Info("TriggeredBad: ", word[2:])
 				return true
 			}
 		} else {
 			if strings.Contains(message, word) {
-				log.Print("TriggeredBad: ", word)
+				slog.Info("TriggeredBad: ", word)
 				return true
 			}
 		}
