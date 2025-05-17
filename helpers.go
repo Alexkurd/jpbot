@@ -20,7 +20,7 @@ func isDebugMode() bool {
 	return strings.ToLower(os.Getenv("BOT_DEBUG")) == "true"
 }
 
-func isCachedUser(userid int64) bool {
+func isCachedUser(userid int64, chatid int64) bool {
 	newMember := getMember(userid)
 	if newMember == nil {
 		cache.Member = append(cache.Member, ChatMember{
@@ -28,6 +28,7 @@ func isCachedUser(userid int64) bool {
 			WelcomeShowed: true,
 			Rank:          0,
 			MessageCount:  0,
+			ChatId:        chatid,
 		})
 		return true
 	}
@@ -43,7 +44,7 @@ func isNewMember(Member *tgbotapi.ChatMemberUpdated) bool {
 		return false
 	}
 	slog.Info(fmt.Sprintf("IsMember %t", Member.NewChatMember.IsMember))
-	return isCachedUser(Member.NewChatMember.User.ID)
+	return isCachedUser(Member.NewChatMember.User.ID, Member.Chat.ID)
 }
 
 func isMessageStartsWithEmoji(update tgbotapi.Update) bool {
@@ -58,6 +59,7 @@ func isMessageStartsWithEmoji(update tgbotapi.Update) bool {
 
 func kickChatMember(chatID int64, userID int64) {
 	BanChatMember(chatID, userID, time.Now().UTC().Add(time.Hour*6).Unix())
+	//unbanChatMember(chatID, userID) //Unban and kick
 }
 
 func BanChatMember(chatID int64, userID int64, untilDate int64) {
@@ -75,8 +77,25 @@ func BanChatMember(chatID int64, userID int64, untilDate int64) {
 		},
 		UntilDate: untilDate,
 	}
+	_, err := bot.Request(config)
+	if err != nil {
+		slog.Warn(fmt.Sprintf("User banned request error: %d until %d, error %s", userID, untilDate, err))
+	} else {
+		slog.Info(fmt.Sprintf("User banned: %d until %d", userID, untilDate))
+	}
+}
+
+func unbanChatMember(chatID int64, userID int64) {
+	config := tgbotapi.UnbanChatMemberConfig{
+		ChatMemberConfig: tgbotapi.ChatMemberConfig{
+			ChatConfig: tgbotapi.ChatConfig{
+				ChatID: chatID,
+			},
+			UserID: userID,
+		},
+	}
 	bot.Send(config)
-	slog.Info(fmt.Sprintf("User banned: %d until %d", userID, untilDate))
+	slog.Info(fmt.Sprintf("User unbanned: %d", userID))
 }
 
 func isChannelMessage(update tgbotapi.Update) bool {
@@ -88,12 +107,27 @@ func isDenyBot(message *tgbotapi.Message) bool {
 	if message.ViaBot != nil {
 		for _, bot := range MainConfig.DenyBots {
 			if strings.ToLower(message.ViaBot.UserName) == bot {
+				slog.Info("Message denied - Bad bot " + bot)
 				badbot = true
 				break
 			}
 		}
 	}
 	return badbot
+}
+
+func isDenyChat(message *tgbotapi.Message) bool {
+	badchat := false
+	if message.ForwardOrigin != nil && len(message.ForwardOrigin.Chat.UserName) > 0 {
+		for _, chat := range MainConfig.DenyChats {
+			if strings.ToLower(message.ForwardOrigin.Chat.UserName) == strings.ToLower(chat) {
+				badchat = true
+				slog.Info("Message denied - Bad chat " + chat)
+				break
+			}
+		}
+	}
+	return badchat
 }
 
 func getNameLink(user tgbotapi.User) string {
@@ -113,7 +147,18 @@ func getNameLink(user tgbotapi.User) string {
 }
 
 func deleteMessage(chatID int64, messageId int) {
-	bot.Send(tgbotapi.NewDeleteMessage(chatID, messageId))
+	_, err = bot.Request(tgbotapi.NewDeleteMessage(chatID, messageId))
+	if err != nil {
+		slog.Error(err.Error())
+	}
+}
+
+func deleteMessages(chatID int64, messageIds []int) {
+	_, err = bot.Request(tgbotapi.NewDeleteMessages(chatID, messageIds))
+	if err != nil {
+		slog.Error(err.Error())
+	}
+	slog.Info(fmt.Sprintf("Deleting trigger %d messages from chat %d", len(messageIds), chatID))
 }
 
 func isBadMessage(message string) bool {
@@ -121,12 +166,12 @@ func isBadMessage(message string) bool {
 		if word[0] == 'r' {
 			regex := regexp.MustCompile(word[2:])
 			if regex.MatchString(message) {
-				slog.Info("TriggeredBad: ", word[2:])
+				slog.Info("TriggeredBad: ", "term", word[2:])
 				return true
 			}
 		} else {
 			if strings.Contains(message, word) {
-				slog.Info("TriggeredBad: ", word)
+				slog.Info("TriggeredBad: ", "term", word)
 				return true
 			}
 		}
@@ -134,7 +179,7 @@ func isBadMessage(message string) bool {
 	return false
 }
 
-func toggle_debugMode() string {
+func toggleDebugmode() string {
 	msg := ""
 	if bot.Debug {
 		bot.Debug = false
@@ -147,7 +192,7 @@ func toggle_debugMode() string {
 	return msg
 }
 
-func toggle_forceMode() string {
+func toggleForcemode() string {
 	msg := ""
 	if forceProtection {
 		forceProtection = false
@@ -175,4 +220,30 @@ func getPinnedMessage() string {
 
 func getPinnedMessageId() int {
 	return MainConfig.PinnedMessageId
+}
+
+func unique[T comparable](arr []T) []T {
+	uniqueMap := make(map[T]bool)
+	uniqueArr := []T{}
+
+	for _, item := range arr {
+		if !uniqueMap[item] {
+			uniqueMap[item] = true
+			uniqueArr = append(uniqueArr, item)
+		}
+	}
+
+	return uniqueArr
+}
+
+func isBadName(member *tgbotapi.ChatMemberUpdated) bool {
+	badName := false
+	for _, name := range MainConfig.DenyNames {
+		if strings.Contains(strings.ToLower(member.From.FirstName+" "+member.From.LastName+" "+member.From.UserName), name) {
+			slog.Info("BadName:" + member.From.FirstName + " " + member.From.LastName + " " + member.From.UserName)
+			badName = true
+			break
+		}
+	}
+	return badName
 }

@@ -2,15 +2,15 @@ package main
 
 import (
 	"fmt"
+	tgbotapi "github.com/OvyFlash/telegram-bot-api"
+	"gopkg.in/yaml.v3"
 	"log"
 	"log/slog"
 	"os"
 	"regexp"
 	"sort"
 	"strings"
-
-	tgbotapi "github.com/OvyFlash/telegram-bot-api"
-	"gopkg.in/yaml.v3"
+	"time"
 )
 
 type Trigger struct {
@@ -53,6 +53,12 @@ type Section struct {
 var oldconfig combotTrigger
 
 func CheckTriggerMessage(message *tgbotapi.Message) bool {
+	now := time.Now()
+	if now.Sub(message.Time()) > time.Minute*5 {
+		slog.Warn("Old message took too long", "message", message.Time().UTC())
+		return false
+	}
+
 	triggered := false
 	for _, trigger := range oldconfig.Trigger {
 		for _, condition := range trigger.Conditions {
@@ -75,7 +81,10 @@ func CheckTriggerMessage(message *tgbotapi.Message) bool {
 			}
 		}
 		if triggered {
-			trigger.Actions = strings.Replace(trigger.Actions, "{reply_to_namelink}", getNameLink(*message.From), -1)
+			triggersTotal.Inc()
+			recordTriggerUsage(trigger.Name, fmt.Sprintf("%t", message.Chat.IsPrivate()))
+			//slog.Info("Trigger time:", message.Time()-time.Now())
+			//trigger.Actions = strings.Replace(trigger.Actions, "{reply_to_namelink}", getNameLink(*message.From), -1)
 			var msg tgbotapi.Chattable
 			if len(trigger.Picture) > 0 {
 				photoConfig := tgbotapi.NewPhoto(message.Chat.ID, tgbotapi.FileID(trigger.Picture))
@@ -97,12 +106,28 @@ func CheckTriggerMessage(message *tgbotapi.Message) bool {
 				triggered = false
 				continue
 			}
-			_, err := bot.Request(msg)
+			reply, err := bot.Send(msg)
 			if err != nil {
 				slog.Warn("TriggeredBad: ", "error", err, "message", message.Text)
+				triggered = false
+				continue
 			}
+
+			//Don't clean private messages
+			if !(message.Chat.ID == message.From.ID) {
+				triggersPublicTotal.Inc()
+				//Delete bot reply
+				delayDeleteTrigger(reply, reply.From.ID)
+				//Delete user trigger
+				delayDeleteTrigger(*message, message.From.ID)
+			} else {
+				triggersPrivateTotal.Inc()
+			}
+
 			triggered = false
+			slog.Info(fmt.Sprintf("Source message: %d", message.MessageID))
 			slog.Info(fmt.Sprintf("TriggeredGood: %s", message.Text))
+			cleanTriggers()
 		}
 	}
 	return triggered
@@ -157,4 +182,44 @@ func getTriggersList() string {
 	}
 
 	return message
+}
+
+func delayDeleteTrigger(message tgbotapi.Message, userID int64) {
+	cache.DeleteTriggerList = append(cache.DeleteTriggerList, WelcomeMessage{
+		ID:        message.MessageID,
+		UserID:    userID,
+		ChatID:    message.Chat.ID,
+		Timestamp: time.Now().UTC().Add(time.Hour * 44),
+	})
+}
+
+func cleanTriggers() int {
+	now := time.Now().UTC()
+	counter := 0
+
+	if len(cache.DeleteTriggerList) > 0 {
+		retainedTriggers := make([]WelcomeMessage, 0, len(cache.DeleteTriggerList))
+
+		result := make(map[int64][]int)
+
+		for _, trigger := range cache.DeleteTriggerList {
+			if trigger.Timestamp.Before(now) {
+				result[trigger.ChatID] = append(result[trigger.ChatID], trigger.ID)
+				counter++
+			} else {
+				retainedTriggers = append(retainedTriggers, trigger)
+			}
+		}
+
+		if counter > 0 {
+			cache.DeleteTriggerList = retainedTriggers
+			saveCache()
+		}
+
+		for chatId, messages := range result {
+			deleteMessages(chatId, messages)
+		}
+	}
+
+	return counter
 }

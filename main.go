@@ -24,10 +24,14 @@ type Config struct {
 	WelcomeMessage       string            `yaml:"welcome_message"`
 	WelcomeButtonMessage string            `yaml:"welcome_button_message"`
 	DenyBots             []string          `yaml:"denybots"`
+	DenyChats            []string          `yaml:"denychats"`
+	DenyNames            []string          `yaml:"denynames"`
 	Admins               []int             `yaml:"admins"`
 	PinnedMessage        string            `yaml:"pinnedMessage"`
 	PinnedMessageId      int               `yaml:"pinnedMessageId"`
 }
+
+const TEXTMESSAGE_LIMIT = 4096
 
 var emulate = false
 var forceProtection = true
@@ -49,13 +53,15 @@ func main() {
 	var updates tgbotapi.UpdatesChannel
 	botInit()
 	afterBotInit()
-	//	initMetrics()
+	go initMetrics()
 	updates = startBot()
 	processUpdates(updates)
+
 } //End main()
 
 func processUpdates(updates tgbotapi.UpdatesChannel) {
 	for update := range updates {
+		requestsTotal.Inc()
 		// Check for callback query
 		if update.CallbackQuery != nil {
 			handleCallback(update.CallbackQuery)
@@ -71,6 +77,18 @@ func processUpdates(updates tgbotapi.UpdatesChannel) {
 			if update.ChatMember.NewChatMember.Status == "kicked" {
 				continue
 			}
+			if update.ChatMember.NewChatMember.Status == "left" {
+				continue
+			}
+			if update.ChatMember.NewChatMember.Status == "restricted" {
+				continue
+			}
+
+			if isBadName(update.ChatMember) {
+				BanChatMember(update.ChatMember.Chat.ID, update.ChatMember.NewChatMember.User.ID, 0)
+				continue
+			}
+
 			if isNewMember(update.ChatMember) {
 				setInitialRights(update, *update.ChatMember.NewChatMember.User)
 				if forceProtection {
@@ -99,10 +117,14 @@ func processUpdates(updates tgbotapi.UpdatesChannel) {
 
 		// Handle new members joining
 		if update.Message.NewChatMembers != nil {
+			//Clean old triggers
+			cleanTriggers()
+			//Check members
 			for _, newMember := range update.Message.NewChatMembers {
-				if isCachedUser(newMember.ID) {
+				if isCachedUser(newMember.ID, update.FromChat().ID) {
 					welcomeNewUser(update, newMember)
 					setInitialRights(update, newMember)
+					checkCachedQueue()
 					continue
 				}
 			}
@@ -118,6 +140,12 @@ func processUpdates(updates tgbotapi.UpdatesChannel) {
 
 		if isDenyBot(update.Message) {
 			deleteMessage(update.Message.Chat.ID, update.Message.MessageID)
+			continue
+		}
+
+		if isDenyChat(update.Message) {
+			deleteMessage(update.Message.Chat.ID, update.Message.MessageID)
+			continue
 		}
 
 		// Check for forbidden text
@@ -130,6 +158,7 @@ func processUpdates(updates tgbotapi.UpdatesChannel) {
 				}
 				deleteMessage(update.Message.Chat.ID, update.Message.MessageID)
 				CleanUpWelcome()
+				//CleanWelcomeQueue()
 				continue
 			}
 			//Check message starting with emoji. Usually spam.
@@ -156,6 +185,8 @@ func processUpdates(updates tgbotapi.UpdatesChannel) {
 
 		//Fix rights for the newcomers
 		fixRights(update)
+
+		collectMapUrls(*update.Message)
 	}
 }
 
@@ -226,8 +257,8 @@ func fixRights(update tgbotapi.Update) {
 		log.Print(err)
 	}
 
-	if member.CanSendMessages && !member.CanSendPhotos {
-		log.Print("Fix rights for user " + update.Message.From.UserName)
+	if member.CanSendMessages && !member.CanAddWebPagePreviews {
+		slog.Info("Fix rights for user " + update.Message.From.UserName)
 		upgradeUserRights(update.Message.Chat.ID, update.Message.From.ID)
 	}
 }
@@ -243,6 +274,10 @@ func processCommands(command string, message tgbotapi.Message) {
 	case "help":
 		msg.Text = "I understand /uptime and /start."
 		msg.ReplyParameters.MessageID = message.MessageID
+	case "unban":
+		if isAdmin(message.From.ID) {
+			//TODO as it's hard to get userId
+		}
 	case "uptime":
 		msg.Text = "Uptime: " + uptime()
 		msg.ReplyParameters.MessageID = message.MessageID
@@ -256,6 +291,12 @@ func processCommands(command string, message tgbotapi.Message) {
 	case "triggers":
 		msg.ParseMode = "HTML"
 		msg.Text = getTriggersList()
+	case "clean_triggers":
+		counter := cleanTriggers()
+		msg.Text = "Cleaned " + strconv.Itoa(counter) + " trigger messages"
+	case "clean_welcome":
+		counter := checkCachedQueue()
+		msg.Text = "Cleaned " + strconv.Itoa(counter) + " welcomed users"
 	case "say":
 		msg.Text = "Select chat to send"
 		msg.ReplyMarkup = say()
@@ -271,16 +312,25 @@ func processCommands(command string, message tgbotapi.Message) {
 		counter := CleanUpWelcome()
 		msg.Text = "Cleaned " + strconv.Itoa(counter) + " messages"
 	case "debug_mode":
-		msg.Text = toggle_debugMode()
+		msg.Text = toggleDebugmode()
 	case "force_mode":
-		msg.Text = toggle_forceMode()
+		msg.Text = toggleForcemode()
 	default:
 		msg.Text = ""
 	}
 	if msg.Text != "" {
-		_, err = bot.Send(msg)
-		if err != nil {
-			log.Println(err)
+		if len(msg.Text) < TEXTMESSAGE_LIMIT {
+			_, err = bot.Send(msg)
+			if err != nil {
+				log.Println(err)
+			}
+		} else {
+			messages := strings.Split(msg.Text, "\r\n\r\n")
+			for _, message := range messages {
+				partialMessage := msg
+				partialMessage.Text = message
+				_, err = bot.Send(partialMessage)
+			}
 		}
 	}
 }
@@ -301,10 +351,6 @@ func ToDeleteQueue() string {
 	return fmt.Sprintln(cache.DeleteList)
 }
 
-func CleanWelcomeQueue() {
-	cache.Member = nil
-}
-
 func checkBanQueue() int {
 	counter := 0
 	if len(cache.DeleteList) > 0 {
@@ -316,6 +362,24 @@ func checkBanQueue() int {
 		}
 	}
 	CleanUpWelcome()
+	return counter
+}
+
+func checkCachedQueue() int {
+	counter := 0
+	if len(cache.Member) > 0 {
+		for id := 0; id < min(20, len(cache.Member)); id++ {
+			if isUserApiBanned(int(cache.Member[id].Id)) {
+				if cache.Member[id].ChatId == 0 {
+					cache.Member[id].ChatId = -1001164690983
+				}
+				BanChatMember(cache.Member[id].ChatId, cache.Member[id].Id, time.Now().Unix()+10)
+				unbanChatMember(cache.Member[id].ChatId, cache.Member[id].Id)
+				cache.Member = append(cache.Member[:id], cache.Member[id+1:]...)
+				counter++
+			}
+		}
+	}
 	return counter
 }
 
@@ -361,6 +425,18 @@ func botInit() {
 	}
 
 	slog.Info(fmt.Sprintf("Authorized on account %s", bot.Self.UserName))
+	admins, _ := bot.GetChatAdministrators(tgbotapi.ChatAdministratorsConfig{ChatConfig: tgbotapi.ChatConfig{
+		ChannelUsername: "@wrenjapanchat", //TODO Move to .env
+	}})
+
+	for _, admin := range admins {
+		MainConfig.Admins = append(MainConfig.Admins, int(admin.User.ID))
+	}
+	MainConfig.Admins = unique(MainConfig.Admins)
+
+	slog.Info(fmt.Sprintf("Admins: %v", MainConfig.Admins))
+
+	//
 }
 
 func afterBotInit() {
@@ -376,7 +452,7 @@ func startBot() tgbotapi.UpdatesChannel {
 		//GetUpdatesWay
 		// Create a new Update config with a timeout
 		u := tgbotapi.NewUpdate(0)
-		u.Timeout = 10
+		u.Timeout = 7
 		updates = bot.GetUpdatesChan(u)
 
 		// TODO Ranking

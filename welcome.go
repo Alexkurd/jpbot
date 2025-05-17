@@ -96,7 +96,11 @@ func upgradeUserRights(chatID int64, userid int64) {
 	// Logic to upgrade user rights
 	// Giving the user the ability to send messages
 	defaultRights := tgbotapi.ChatPermissions{
-		CanSendMessages: true,
+		CanSendMessages:       true,
+		CanSendPolls:          true,
+		CanSendOtherMessages:  true,
+		CanInviteUsers:        true,
+		CanAddWebPagePreviews: true,
 	}
 	defaultRights.SetCanSendMediaMessages(true)
 
@@ -107,7 +111,7 @@ func upgradeUserRights(chatID int64, userid int64) {
 			},
 			UserID: userid,
 		},
-		UseIndependentChatPermissions: true,
+		UseIndependentChatPermissions: false,
 		Permissions:                   &defaultRights,
 	}
 	bot.Send(config)
@@ -150,4 +154,8 @@ func CleanUpWelcome() int {
 		saveCache()
 	}
 	return counter
+}
+
+func CleanWelcomeQueue() {
+	cache.Member = nil
 }

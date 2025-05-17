@@ -4,15 +4,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"log/slog"
 	"os"
 	"sync"
 	"time"
 )
 
 type Cache struct {
-	Member      []ChatMember
-	DeleteList  []WelcomeMessage `json:"DeleteList,omitempty"`
-	LastChanged int64            `json:"last_changed"`
+	Member            []ChatMember
+	DeleteList        []WelcomeMessage `json:"DeleteList,omitempty"`
+	DeleteTriggerList []WelcomeMessage `json:"DeleteTriggerList,omitempty"`
+	LastChanged       int64            `json:"last_changed"`
 }
 
 type ChatMember struct {
@@ -20,6 +22,7 @@ type ChatMember struct {
 	WelcomeShowed bool  `json:"welcome"`
 	Rank          int   `json:"rank"`
 	MessageCount  int   `json:"count"`
+	ChatId        int64 `default:"-1001164690983" json:"chat_id"`
 }
 
 var (
@@ -71,7 +74,7 @@ func importCache() (bool, error) {
 		fmt.Println("Error loading data:", err)
 	}
 
-	fmt.Println("Last changed:", cache.LastChanged)
+	slog.Info("Last changed:", "cache", cache.LastChanged)
 	cache.LastChanged = time.Now().Unix()
 	return true, nil
 }
@@ -110,7 +113,11 @@ func clearCachedUser(userid int64) {
 func clearDeleteListByUser(userid int64) {
 	for id, message := range cache.DeleteList {
 		if message.UserID == userid {
-			cache.DeleteList = append(cache.DeleteList[:id], cache.DeleteList[id+1:]...)
+			if len(cache.DeleteList) == 1 {
+				cache.DeleteList = nil
+			} else {
+				cache.DeleteList = append(cache.DeleteList[:id], cache.DeleteList[id+1:]...)
+			}
 		}
 	}
 }
